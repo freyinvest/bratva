@@ -1,0 +1,6 @@
+{
+  "name": "Братва — Мобильный мессенджер",
+  "description": "Современный мобильный мессенджер для общения друзей с личными и групповыми чатами, медиа, поиском и профилем в стиле Android.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
