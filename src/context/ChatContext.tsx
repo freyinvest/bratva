@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+} from 'react';
 import {
   User,
   Chat,
@@ -9,15 +15,9 @@ import {
   CallState,
 } from '../types';
 import {
-  INITIAL_USERS,
-  INITIAL_CHATS,
-  INITIAL_MESSAGES,
-  INITIAL_STORIES,
-  INITIAL_FRIEND_REQUESTS,
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { auth } from '../lib/firebase';
 import { sounds } from '../utils/sound';
 
 interface ChatContextType {
@@ -91,14 +91,19 @@ interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-const DEMO_USER_IDS = [
-  'user-belyi',
-  'user-kosmos',
-  'user-pchela',
-  'user-fil',
-  'user-olga',
-  'user-artur',
-];
+// Больше не добавляем демо-профили в список пользователей.
+const EMPTY_USER: User = {
+  id: '',
+  name: '',
+  nickname: '',
+  phone: '',
+  email: '',
+  avatar: '',
+  bio: '',
+  status: 'offline',
+  lastSeen: '',
+  badge: '',
+};
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -109,26 +114,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (saved) {
         const parsed = JSON.parse(saved);
-
         if (Array.isArray(parsed)) {
-          // Всегда сохраняем шесть исходных демо-профилей.
-          const usersById = new Map<string, User>();
-
-          INITIAL_USERS.forEach((user) => usersById.set(user.id, user));
-          parsed.forEach((user: User) => {
-            if (user && typeof user.id === 'string') {
-              usersById.set(user.id, user);
-            }
-          });
-
-          return Array.from(usersById.values());
+          // Не восстанавливаем встроенные демо-профили.
+          return parsed.filter(
+            (user: User) =>
+              user &&
+              typeof user.id === 'string' &&
+              !user.id.startsWith('user-belyi') &&
+              !user.id.startsWith('user-kosmos') &&
+              !user.id.startsWith('user-pchela') &&
+              !user.id.startsWith('user-fil') &&
+              !user.id.startsWith('user-olga') &&
+              !user.id.startsWith('user-artur')
+          );
         }
       }
     } catch (error) {
       console.error('Не удалось прочитать локальных пользователей:', error);
     }
 
-    return INITIAL_USERS;
+    return [];
   });
 
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
@@ -136,23 +141,39 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   });
 
   const [chats, setChats] = useState<Chat[]>(() => {
-    const saved = localStorage.getItem('bratva_chats');
-    return saved ? JSON.parse(saved) : INITIAL_CHATS;
+    try {
+      const saved = localStorage.getItem('bratva_chats');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   const [messages, setMessages] = useState<Message[]>(() => {
-    const saved = localStorage.getItem('bratva_messages');
-    return saved ? JSON.parse(saved) : INITIAL_MESSAGES;
+    try {
+      const saved = localStorage.getItem('bratva_messages');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   const [stories, setStories] = useState<Story[]>(() => {
-    const saved = localStorage.getItem('bratva_stories');
-    return saved ? JSON.parse(saved) : INITIAL_STORIES;
+    try {
+      const saved = localStorage.getItem('bratva_stories');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>(() => {
-    const saved = localStorage.getItem('bratva_friend_requests');
-    return saved ? JSON.parse(saved) : INITIAL_FRIEND_REQUESTS;
+    try {
+      const saved = localStorage.getItem('bratva_friend_requests');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -163,7 +184,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const [chatFilter, setChatFilter] = useState<
     'all' | 'direct' | 'groups' | 'unread'
   >('all');
-  const [isTypingUserId, setIsTypingUserId] = useState<string | null>(null);
+
+  // Сохраняем поле для совместимости с остальными компонентами,
+  // но автоматически больше никому не имитируем набор текста.
+  const [isTypingUserId] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabledState] = useState<boolean>(true);
   const [deviceMode, setDeviceMode] = useState<'frame' | 'fullscreen'>('frame');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(
@@ -201,10 +225,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   }, [friendRequests]);
 
-  // Не выбираем первого пользователя автоматически:
-  // без активной сессии Firebase приложение не должно считать его вошедшим.
   const currentUser =
-    allUsers.find((user) => user.id === currentUserId) || INITIAL_USERS[0];
+    allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
 
   const activeChat = chats.find((chat) => chat.id === activeChatId) || null;
 
@@ -221,24 +243,28 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
+  // Отправляем только сообщение текущего пользователя.
+  // Автоответы и случайные ответы собеседников отключены.
   const sendMessage = (
     chatId: string,
     text?: string,
     imageUrl?: string,
     replyTo?: Message['replyToMessage']
   ) => {
-    if (!text && !imageUrl) return;
+    if (!text?.trim() && !imageUrl) return;
     if (!currentUserId) return;
 
     const sender = allUsers.find((user) => user.id === currentUserId);
     if (!sender) return;
 
     const now = new Date();
-    const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-    const newMsgId = 'msg-' + Date.now();
+    const timeStr =
+      String(now.getHours()).padStart(2, '0') +
+      ':' +
+      String(now.getMinutes()).padStart(2, '0');
 
     const newMsg: Message = {
-      id: newMsgId,
+      id: 'msg-' + Date.now(),
       chatId,
       senderId: sender.id,
       text,
@@ -270,92 +296,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
           : chat
       )
     );
-
-    // Автоответ используется только в локальной демо-симуляции.
-    const targetChat = chats.find((chat) => chat.id === chatId);
-
-    if (targetChat) {
-      const otherParticipantIds = targetChat.participants.filter(
-        (id) => id !== sender.id
-      );
-
-      if (otherParticipantIds.length > 0) {
-        const responderId = otherParticipantIds[0];
-
-        setTimeout(() => {
-          setIsTypingUserId(responderId);
-        }, 800);
-
-        setTimeout(() => {
-          setIsTypingUserId(null);
-
-          const repliesByPerson: Record<string, string[]> = {
-            'user-kosmos': [
-              'Красава! Принял, уже выезжаю.',
-              'Саня, в точку! На базе сегодня всё обсудим 🚀',
-              'Понял тебя. Главное без суеты, всё под контролем!',
-              'Ха, отличный расклад! Жду тебя.',
-            ],
-            'user-fil': [
-              'Всё четко. В зале буду, звони если что.',
-              'Принято. Руки держи выше, брат 🥊',
-              'Слово держим. Вечером увидимся.',
-            ],
-            'user-pchela': [
-              'Цифры сходятся. Бумаги готовы, не переживай.',
-              'Всё по уму. Я на связи по телефону.',
-              'Зафиксировал. Завтра решим вопрос.',
-            ],
-            'user-olga': [
-              'Спасибо, родной! Береги себя ❤️',
-              'Жду тебя дома к ужину!',
-              'Хорошо, дорогой.',
-            ],
-          };
-
-          const pool = repliesByPerson[responderId] || [
-            'Принял! На связи 🤝',
-            'Всё по плану, братуха.',
-            'Договорились, позже наберу.',
-            'Красавчик, вопросов нет!',
-          ];
-
-          const replyText = pool[Math.floor(Math.random() * pool.length)];
-          const replyTime = new Date();
-          const rTimeStr = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
-
-          const autoReplyMsg: Message = {
-            id: 'msg-auto-' + Date.now(),
-            chatId,
-            senderId: responderId,
-            text: replyText,
-            timestamp: rTimeStr,
-            isRead: true,
-            reactions: {},
-          };
-
-          setMessages((prevMsgs) => [...prevMsgs, autoReplyMsg]);
-          sounds.playReceive();
-
-          setChats((prevChats) =>
-            prevChats.map((chat) =>
-              chat.id === chatId
-                ? {
-                    ...chat,
-                    updatedAt: rTimeStr,
-                    lastMessage: {
-                      text: replyText,
-                      timestamp: rTimeStr,
-                      senderId: responderId,
-                      isRead: true,
-                    },
-                  }
-                : chat
-            )
-          );
-        }, 2400);
-      }
-    }
   };
 
   const toggleReaction = (messageId: string, emoji: string) => {
@@ -404,7 +344,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const newChatId = 'chat-grp-' + Date.now();
     const now = new Date();
-    const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const timeStr =
+      String(now.getHours()).padStart(2, '0') +
+      ':' +
+      String(now.getMinutes()).padStart(2, '0');
 
     const newChat: Chat = {
       id: newChatId,
@@ -461,14 +404,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     const targetUser = allUsers.find((user) => user.id === targetUserId);
-    if (!targetUser) return '';
+    if (!targetUser || targetUser.id === currentUserId) return '';
 
     const creator = allUsers.find((user) => user.id === currentUserId);
     if (!creator) return '';
 
     const newChatId = 'chat-dir-' + Date.now();
     const now = new Date();
-    const timeStr = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+    const timeStr =
+      String(now.getHours()).padStart(2, '0') +
+      ':' +
+      String(now.getMinutes()).padStart(2, '0');
 
     const newChat: Chat = {
       id: newChatId,
@@ -495,7 +441,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const addFriend = (targetUserId: string) => {
-    if (!currentUserId) return;
+    if (!currentUserId || targetUserId === currentUserId) return;
 
     const targetUser = allUsers.find((user) => user.id === targetUserId);
     if (!targetUser) return;
@@ -503,7 +449,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     const newReq: FriendRequest = {
       id: 'req-' + Date.now(),
       fromUser: targetUser,
-      toUserId: targetUserId,
+      toUserId: currentUserId,
       createdAt: 'Только что',
       status: 'accepted',
     };
@@ -543,28 +489,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
-  // Быстрый вход разрешён только для шести исходных демо-профилей.
-  const loginAsUser = (userId: string) => {
-    if (!DEMO_USER_IDS.includes(userId)) {
-      console.warn('Быстрый вход доступен только для демо-аккаунтов.');
-      return;
-    }
-
-    const target = INITIAL_USERS.find((user) => user.id === userId);
-    if (!target) return;
-
-    setAllUsers((prev) => {
-      const exists = prev.some((user) => user.id === target.id);
-
-      return exists
-        ? prev.map((user) => (user.id === target.id ? target : user))
-        : [...prev, target];
-    });
-
-    setCurrentUserId(userId);
-    setActiveChatId(null);
-    setIsAuthModalOpen(false);
-    sounds.playReceive();
+  // Демо-вход отключён.
+  const loginAsUser = (_userId: string) => {
+    console.warn('Вход через демо-аккаунты отключён. Используй Firebase.');
   };
 
   const logout = async () => {
@@ -579,7 +506,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  // Вызывается только после успешной Firebase-аутентификации.
+  // Вызывается после успешной Firebase-аутентификации.
   const setAuthenticatedUser = (user: User) => {
     setAllUsers((prev) => {
       const exists = prev.some((item) => item.id === user.id);
@@ -595,8 +522,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     sounds.playReceive();
   };
 
-  // Локальная регистрация только для тестирования.
-  const registerUser = (data: {
+  // Регистрация через эту локальную функцию отключена:
+  // пользователь должен регистрироваться через Firebase в AuthModal.
+  const registerUser = (_data: {
     name: string;
     nickname: string;
     phone: string;
@@ -604,29 +532,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     avatar?: string;
     bio?: string;
   }) => {
-    const newId = 'user-' + Date.now();
-
-    const newUser: User = {
-      id: newId,
-      name: data.name,
-      nickname: data.nickname.startsWith('@')
-        ? data.nickname
-        : `@${data.nickname}`,
-      phone: data.phone,
-      email: data.email,
-      avatar:
-        data.avatar ||
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=400&q=80',
-      bio: data.bio || 'Свой человек в Братве 🤝',
-      status: 'online',
-      lastSeen: 'в сети',
-      badge: 'Свой',
-    };
-
-    setAllUsers((prev) => [newUser, ...prev]);
-    setCurrentUserId(newId);
-    setIsAuthModalOpen(false);
-    sounds.playReceive();
+    console.warn('Используй регистрацию через Firebase.');
   };
 
   const startCall = (targetUser: User, type: 'audio' | 'video') => {

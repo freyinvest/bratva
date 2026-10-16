@@ -7,8 +7,8 @@ import {
 import { auth, db } from '../../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import {
-  X, Mail, Phone, Lock, User, AtSign, KeyRound, Sparkles,
-  ArrowRight, ShieldCheck,
+  X, Mail, Phone, Lock, User, AtSign,
+  ShieldCheck,
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
@@ -18,16 +18,10 @@ export const AuthModal: React.FC = () => {
   const {
     isAuthModalOpen,
     setIsAuthModalOpen,
-    allUsers,
-    currentUser,
-    loginAsUser,
     setAuthenticatedUser,
   } = useChat();
 
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [method, setMethod] = useState<'email' | 'phone'>('email');
-  const [phoneStep, setPhoneStep] = useState<'input' | 'verify'>('input');
-  const [smsCode, setSmsCode] = useState(['', '', '', '']);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -168,50 +162,8 @@ setAuthenticatedUser(profile);
   };
 
   // Phone authentication is still a demo flow; it does not send real SMS.
-  const handleSendPhoneSms = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setErrorMessage('');
-    if (!phoneNumber.trim()) return;
-    setPhoneStep('verify');
-  };
 
-  const handleVerifySms = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setErrorMessage('');
 
-    if (smsCode.join('') !== '7788') {
-      setErrorMessage('Неверный тестовый код. Для демонстрации введи 7788.');
-      return;
-    }
-
-    const cleanPhone = phoneNumber.replace(/[\s\-()]/g, '');
-    const found = allUsers.find(
-      (u) => u.phone.replace(/[\s\-()]/g, '') === cleanPhone,
-    );
-
-    if (found) {
-      loginAsUser(found.id);
-    } else {
-      setErrorMessage(
-        'Вход по телефону пока работает только в демонстрационном режиме. Используй вход по email.',
-      );
-      return;
-    }
-
-    setIsAuthModalOpen(false);
-    setPhoneStep('input');
-  };
-
-  const handleSmsInputChange = (index: number, value: string) => {
-    const digit = value.replace(/\D/g, '').slice(-1);
-    const newCode = [...smsCode];
-    newCode[index] = digit;
-    setSmsCode(newCode);
-
-    if (digit && index < 3) {
-      document.getElementById(`sms-code-${index + 1}`)?.focus();
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 select-none">
@@ -242,43 +194,11 @@ setAuthenticatedUser(profile);
           </button>
         </div>
 
-        <div className="p-3 bg-slate-950/70 border-b border-slate-800/80">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
-              <Sparkles size={12} /> Быстрый вход для теста
-            </span>
-            <span className="text-[10px] text-slate-500">Демо-аккаунты</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {allUsers.map((u) => {
-              const isCurrent = u.id === currentUser.id;
-              return (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => loginAsUser(u.id)}
-                  className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
-                    isCurrent
-                      ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
-                      : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <img src={u.avatar} alt={u.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold truncate leading-none">{u.name.split(' ')[0]}</p>
-                    <p className="text-[9px] text-slate-400 truncate mt-0.5">{u.badge || 'Брат'}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         <div className="p-4 space-y-4">
           <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
             <button
               type="button"
-              onClick={() => { setAuthMode('login'); setPhoneStep('input'); setErrorMessage(''); }}
+              onClick={() => { setAuthMode('login'); setErrorMessage(''); }}
               className={`py-2 text-xs font-bold rounded-xl transition-all ${
                 authMode === 'login' ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
@@ -287,33 +207,12 @@ setAuthenticatedUser(profile);
             </button>
             <button
               type="button"
-              onClick={() => { setAuthMode('register'); setPhoneStep('input'); setErrorMessage(''); }}
+              onClick={() => { setAuthMode('register'); setErrorMessage(''); }}
               className={`py-2 text-xs font-bold rounded-xl transition-all ${
                 authMode === 'register' ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               Регистрация
-            </button>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { setMethod('email'); setPhoneStep('input'); setErrorMessage(''); }}
-              className={`flex-1 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 border transition-all ${
-                method === 'email' ? 'bg-slate-800 border-emerald-500/40 text-emerald-400' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Mail size={14} /> По почте (Email)
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMethod('phone'); setPhoneStep('input'); setErrorMessage(''); }}
-              className={`flex-1 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 border transition-all ${
-                method === 'phone' ? 'bg-slate-800 border-emerald-500/40 text-emerald-400' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Phone size={14} /> По номеру телефона
             </button>
           </div>
 
@@ -323,7 +222,7 @@ setAuthenticatedUser(profile);
             </div>
           )}
 
-          {method === 'email' ? (
+          <>
             <form onSubmit={handleEmailAuth} className="space-y-3">
               {authMode === 'register' && (
                 <>
@@ -413,89 +312,7 @@ setAuthenticatedUser(profile);
                 {isLoading ? 'Подожди...' : authMode === 'login' ? 'Войти в аккаунт' : 'Завершить регистрацию'}
               </button>
             </form>
-          ) : phoneStep === 'input' ? (
-            <form onSubmit={handleSendPhoneSms} className="space-y-3">
-              {authMode === 'register' && (
-                <>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">Имя:</label>
-                    <input
-                      type="text" required placeholder="Ваше имя"
-                      value={fullName} onChange={(e) => setFullName(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">Никнейм (@ник):</label>
-                    <input
-                      type="text" required placeholder="@bratva_user"
-                      value={nickname} onChange={(e) => setNickname(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                </>
-              )}
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Номер мобильного телефона:</label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
-                  <input
-                    type="tel" required placeholder="+7 (999) 111-22-33"
-                    value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <p className="text-[10px] text-amber-300 mt-1">
-                  Деморежим: настоящее SMS пока не отправляется. Для входа в аккаунт используй email.
-                </p>
-              </div>
-              <button
-                type="submit" disabled={!phoneNumber.trim()}
-                className="w-full py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/25 transition-all mt-3 flex items-center justify-center gap-2"
-              >
-                Продолжить <ArrowRight size={15} />
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifySms} className="space-y-4 text-center">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
-                <KeyRound size={22} />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-white">Введите тестовый код</h4>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Это демонстрация, SMS не отправлялось. Номер: <span className="text-emerald-400 font-semibold">{phoneNumber}</span>
-                </p>
-              </div>
-              <div className="flex justify-center gap-2.5">
-                {[0, 1, 2, 3].map((idx) => (
-                  <input
-                    key={idx} id={`sms-code-${idx}`} type="text" inputMode="numeric"
-                    maxLength={1} autoFocus={idx === 0} value={smsCode[idx]}
-                    onChange={(e) => handleSmsInputChange(idx, e.target.value)}
-                    className="w-11 h-12 text-center text-lg font-bold bg-slate-800 border-2 border-slate-700 rounded-2xl text-emerald-400 focus:border-emerald-500 focus:outline-none shadow-md"
-                  />
-                ))}
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Тестовый код: <span className="font-mono text-emerald-400">7788</span>
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button" onClick={() => setPhoneStep('input')}
-                  className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
-                >
-                  Назад
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-md shadow-emerald-500/25"
-                >
-                  Подтвердить
-                </button>
-              </div>
-            </form>
-          )}
+          </>
         </div>
       </div>
     </div>
