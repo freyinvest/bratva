@@ -118,7 +118,18 @@ export const AndroidShell: React.FC = () => {
         {/* Screen View Area */}
         <div className="flex-1 overflow-hidden relative flex flex-col">
           {activeChatId ? (
-            <ChatRoom />
+            <>
+              {/* Bratva PRO banner inside chat */}
+              <div className="shrink-0 px-3 py-2 border-b border-emerald-500/20 bg-slate-900/95 flex items-center gap-2 z-30">
+                <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-indigo-600 flex items-center justify-center">
+                  <span className="font-extrabold text-sm text-white">Б</span>
+                </div>
+                <span className="font-extrabold text-sm text-white">Братва</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">PRO</span>
+                <span className="ml-auto text-[10px] text-slate-400 truncate">Всегда на связи с близкими</span>
+              </div>
+              <ChatRoom />
+            </>
           ) : (
             <>
               {activeTab === 'chats' && <ChatList />}

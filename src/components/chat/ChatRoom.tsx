@@ -52,9 +52,15 @@ export const ChatRoom: React.FC = () => {
 
   const chatMessages = messages.filter(m => m.chatId === activeChatId);
 
-  // Auto scroll to bottom on new message
+    // Auto scroll only inside the chat messages container
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesEndRef.current?.parentElement;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
   }, [chatMessages.length, isTypingUserId]);
 
   if (!activeChat) {
@@ -120,7 +126,11 @@ export const ChatRoom: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 relative">
-      {/* Chat Room Top Bar */}
+   
+ 
+
+    {/* Chat Room Top Bar */}
+  {/* Chat Room Top Bar */}
       <div className="p-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-md flex items-center justify-between z-20">
         <div className="flex items-center gap-2.5 min-w-0">
           <button
