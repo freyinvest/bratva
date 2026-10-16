@@ -16,7 +16,8 @@ import {
   INITIAL_FRIEND_REQUESTS,
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { sounds } from '../utils/sound';
 
 interface ChatContextType {

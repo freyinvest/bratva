@@ -114,6 +114,16 @@ export const AuthModal: React.FC = () => {
         };
 
         await setDoc(doc(db, 'users', credential.user.uid), profile);
+        await setDoc(doc(db, 'publicProfiles', credential.user.uid), {
+  id: credential.user.uid,
+  name: profile.name,
+  nickname: profile.nickname,
+  avatar: profile.avatar,
+  bio: profile.bio,
+  status: profile.status,
+  lastSeen: profile.lastSeen,
+  badge: profile.badge,
+});
         setAuthenticatedUser(profile);
         setIsAuthModalOpen(false);
       } else {
@@ -135,7 +145,19 @@ export const AuthModal: React.FC = () => {
         }
 
         const profile = profileSnapshot.data() as AppUser;
-        setAuthenticatedUser(profile);
+
+await setDoc(doc(db, 'publicProfiles', credential.user.uid), {
+  id: credential.user.uid,
+  name: profile.name,
+  nickname: profile.nickname,
+  avatar: profile.avatar,
+  bio: profile.bio || '',
+  status: profile.status || 'offline',
+  lastSeen: profile.lastSeen || '',
+  badge: profile.badge || 'Свой',
+});
+
+setAuthenticatedUser(profile);
         setIsAuthModalOpen(false);
       }
     } catch (error: unknown) {
