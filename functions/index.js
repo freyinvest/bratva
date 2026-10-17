@@ -19,7 +19,13 @@ exports.sendMessagePush = onDocumentCreated(
     const participants = Array.isArray(chatSnapshot.data().participants)
       ? chatSnapshot.data().participants.filter((id) => typeof id === 'string')
       : [];
-    const recipients = participants.filter((id) => id !== message.senderId);
+    const candidateRecipients = participants.filter((id) => id !== message.senderId);
+    // Respect each recipient's block list before sending a background notification.
+    const recipientChecks = await Promise.all(candidateRecipients.map(async (userId) => {
+      const block = await db.collection('userContacts').doc(userId + '_' + message.senderId).get();
+      return block.exists && block.data()?.status === 'blocked' ? null : userId;
+    }));
+    const recipients = recipientChecks.filter((id) => typeof id === 'string');
     if (!recipients.length) return;
 
     const body = typeof message.text === 'string' && message.text.trim()
