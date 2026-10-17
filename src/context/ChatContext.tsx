@@ -258,6 +258,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
         if (!sender) return null;
+        setAllUsers((previous) =>
+          previous.some((user) => user.id === senderId) ? previous : [sender!, ...previous]
+        );
         return {
           id: item.id,
           fromUser: sender,
