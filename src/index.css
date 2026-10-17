@@ -66,3 +66,28 @@ html, #root {
 
 input, textarea, select, button { font: inherit; }
 input, textarea { user-select: text; }
+
+
+/* Light-blue theme overrides for the utility-based interface. */
+html[data-theme="light-blue"] { color-scheme: light; }
+html[data-theme="light-blue"] body { background-color: #eaf6ff; color: #16324a; }
+html[data-theme="light-blue"] [class*="bg-slate-950"] { background-color: #eff8ff !important; }
+html[data-theme="light-blue"] [class*="bg-slate-900"] { background-color: #dceffd !important; }
+html[data-theme="light-blue"] [class*="bg-slate-800"] { background-color: #c9e6f8 !important; }
+html[data-theme="light-blue"] [class*="bg-slate-700"] { background-color: #b7d9ef !important; }
+html[data-theme="light-blue"] [class*="bg-gradient-to-r"],
+html[data-theme="light-blue"] [class*="bg-gradient-to-b"],
+html[data-theme="light-blue"] [class*="bg-gradient-to-tr"] {
+  background-image: linear-gradient(135deg, #e7f5ff, #cce8fa) !important;
+}
+html[data-theme="light-blue"] [class~="text-white"],
+html[data-theme="light-blue"] [class~="text-slate-100"],
+html[data-theme="light-blue"] [class~="text-slate-200"],
+html[data-theme="light-blue"] [class~="text-slate-300"] { color: #17364e !important; }
+html[data-theme="light-blue"] [class~="text-slate-400"],
+html[data-theme="light-blue"] [class~="text-slate-500"] { color: #496b83 !important; }
+html[data-theme="light-blue"] [class*="border-slate-800"],
+html[data-theme="light-blue"] [class*="border-slate-700"] { border-color: #b7d8ee !important; }
+html[data-theme="light-blue"] [class*="placeholder-slate-500"]::placeholder { color: #55758b !important; }
+html[data-theme="light-blue"] [class*="shadow-2xl"],
+html[data-theme="light-blue"] [class*="shadow-xl"] { --tw-shadow-color: rgb(66 126 164 / 12%); }

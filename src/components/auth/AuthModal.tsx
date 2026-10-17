@@ -10,7 +10,7 @@ import { auth, db } from '../../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import {
   X, Mail, Lock, User, AtSign,
-  ShieldCheck,
+  ShieldCheck, Camera,
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
@@ -29,6 +29,50 @@ export const AuthModal: React.FC = () => {
   const [fullName, setFullName] = useState('');
   const [nickname, setNickname] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(PRESET_AVATARS[0]);
+  const [avatarError, setAvatarError] = useState('');
+
+  const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Выбери файл изображения.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError('Размер фото должен быть не больше 5 МБ.');
+      event.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        setAvatarError('Не удалось прочитать фото.');
+        return;
+      }
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxSize = 256;
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) {
+          setAvatarError('Не удалось обработать фото.');
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        setSelectedAvatar(canvas.toDataURL('image/jpeg', 0.75));
+        setAvatarError('');
+      };
+      image.onerror = () => setAvatarError('Не удалось прочитать фото.');
+      image.src = reader.result;
+    };
+    reader.onerror = () => setAvatarError('Не удалось загрузить фото.');
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -271,12 +315,24 @@ setAuthenticatedUser(profile);
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">Выберите аватар:</label>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">Выберите готовый аватар или загрузите свой:</label>
+                    <label className="mb-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 py-2.5 text-xs font-bold text-emerald-400 transition-colors hover:bg-emerald-500/25">
+                      <Camera size={16} />
+                      Загрузить своё фото (до 5 МБ)
+                      <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+                    </label>
+                    {avatarError && <p role="alert" className="mb-2 text-xs text-red-400">{avatarError}</p>}
+                    <div className="mb-3 flex items-center gap-3">
+                      <img src={selectedAvatar || PRESET_AVATARS[0]} alt="Предпросмотр аватара"
+                        onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+                        className="h-14 w-14 rounded-xl border border-slate-700 object-cover" />
+                      <p className="text-xs text-slate-400">Так будет выглядеть твой аватар</p>
+                    </div>
                     <div className="grid grid-cols-6 gap-1.5">
                       {PRESET_AVATARS.map((url, i) => (
                         <button
                           key={i} type="button" aria-label={`Выбрать аватар ${i + 1}`}
-                          onClick={() => setSelectedAvatar(url)}
+                          onClick={() => { setSelectedAvatar(url); setAvatarError(''); }}
                           className={`aspect-square rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${
                             selectedAvatar === url ? 'border-emerald-500 scale-95' : 'border-transparent opacity-60 hover:opacity-100'
                           }`}
