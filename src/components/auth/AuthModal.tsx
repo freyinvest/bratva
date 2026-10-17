@@ -9,7 +9,7 @@ import {
 import { auth, db } from '../../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import {
-  X, Mail, Phone, Lock, User, AtSign,
+  X, Mail, Lock, User, AtSign,
   ShieldCheck,
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
@@ -26,7 +26,6 @@ export const AuthModal: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [fullName, setFullName] = useState('');
   const [nickname, setNickname] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(PRESET_AVATARS[0]);
@@ -102,7 +101,7 @@ export const AuthModal: React.FC = () => {
           id: credential.user.uid,
           name: cleanName,
           nickname: cleanNickname,
-          phone: phoneNumber.trim(),
+          phone: '',
           email: cleanEmail,
           avatar: selectedAvatar,
           bio: '',
@@ -267,17 +266,6 @@ setAuthenticatedUser(profile);
                         type="text" required minLength={3} maxLength={30}
                         placeholder="@brat_99"
                         value={nickname} onChange={(e) => setNickname(e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-300 block mb-1">Номер телефона:</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
-                      <input
-                        type="tel" required placeholder="+7 (999) 000-00-00"
-                        value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)}
                         className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                       />
                     </div>

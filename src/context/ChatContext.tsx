@@ -194,25 +194,42 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     if (!currentUserId) return;
-    localStorage.setItem(`bratva_users_${currentUserId}`, JSON.stringify(allUsers));
+    try {
+      localStorage.setItem(`bratva_users_${currentUserId}`, JSON.stringify(allUsers));
+    } catch (error) {
+      console.warn('Не удалось сохранить пользователей в локальном кэше:', error);
+    }
   }, [allUsers, currentUserId]);
 
   useEffect(() => {
-    if (currentUserId) {
-      localStorage.setItem('bratva_current_user_id', currentUserId);
-    } else {
-      localStorage.removeItem('bratva_current_user_id');
+    try {
+      if (currentUserId) {
+        localStorage.setItem('bratva_current_user_id', currentUserId);
+      } else {
+        localStorage.removeItem('bratva_current_user_id');
+      }
+    } catch (error) {
+      console.warn('Не удалось сохранить состояние входа:', error);
     }
   }, [currentUserId]);
 
   useEffect(() => {
     if (!currentUserId) return;
-    localStorage.setItem(`bratva_chats_${currentUserId}`, JSON.stringify(chats));
+    try {
+      localStorage.setItem(`bratva_chats_${currentUserId}`, JSON.stringify(chats));
+    } catch (error) {
+      console.warn('Не удалось сохранить чаты в локальном кэше:', error);
+    }
   }, [chats, currentUserId]);
 
   useEffect(() => {
     if (!currentUserId) return;
-    localStorage.setItem(`bratva_messages_${currentUserId}`, JSON.stringify(messages));
+    try {
+      localStorage.setItem(`bratva_messages_${currentUserId}`, JSON.stringify(messages));
+    } catch (error) {
+      // Storage quota errors must never crash the chat screen after sending media.
+      console.warn('Не удалось сохранить сообщения в локальном кэше:', error);
+    }
   }, [messages, currentUserId]);
 
   const currentUser =
