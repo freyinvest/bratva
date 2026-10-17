@@ -13,8 +13,6 @@ import {
   CheckCheck,
   Check,
   X,
-  Play,
-  Pause,
   Users,
   Info
 } from 'lucide-react';
@@ -44,12 +42,19 @@ export const ChatRoom: React.FC = () => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [customImageUrl, setCustomImageUrl] = useState('');
   const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [showChatInfo, setShowChatInfo] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [isSendingVoice, setIsSendingVoice] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef(0);
+  const recordingTimerRef = useRef<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -164,6 +169,107 @@ export const ChatRoom: React.FC = () => {
     };
     reader.readAsDataURL(file);
   };
+
+  const startOrStopVoiceRecording = async () => {
+    if (isRecordingVoice) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setUploadError('Запись голосовых сообщений не поддерживается этим браузером. Откройте сайт по HTTPS или используйте современный браузер.');
+      return;
+    }
+
+    setUploadError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+      const supportedTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+      ];
+      const mimeType = supportedTypes.find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 24000 })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      voiceChunksRef.current = [];
+      recordingStartedAtRef.current = Date.now();
+      setRecordingSeconds(0);
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setUploadError('Не удалось записать голосовое сообщение. Проверьте доступ к микрофону.');
+        stream.getTracks().forEach(track => track.stop());
+        setIsRecordingVoice(false);
+        setIsSendingVoice(false);
+        if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop());
+        audioStreamRef.current = null;
+        if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+        setIsRecordingVoice(false);
+        const duration = Math.max(1, Math.round((Date.now() - recordingStartedAtRef.current) / 1000));
+        const blob = new Blob(voiceChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        voiceChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        if (blob.size < 500) {
+          setIsSendingVoice(false);
+          setUploadError('Запись слишком короткая. Удерживайте запись хотя бы секунду.');
+          return;
+        }
+        if (blob.size > 650 * 1024) {
+          setIsSendingVoice(false);
+          setUploadError('Запись получилась слишком большой. Попробуйте записать голосовое короче.');
+          return;
+        }
+        setIsSendingVoice(true);
+        const reader = new FileReader();
+        reader.onerror = () => {
+          setIsSendingVoice(false);
+          setUploadError('Не удалось подготовить аудио к отправке. Попробуйте ещё раз.');
+        };
+        reader.onload = () => {
+          if (typeof reader.result !== 'string') {
+            setIsSendingVoice(false);
+            setUploadError('Не удалось подготовить аудио к отправке.');
+            return;
+          }
+          sendMessage(activeChat.id, undefined, undefined, undefined, reader.result, duration);
+          setIsSendingVoice(false);
+          setUploadError('');
+        };
+        reader.readAsDataURL(blob);
+      };
+      recorder.start(250);
+      setIsRecordingVoice(true);
+      setIsSendingVoice(false);
+      recordingTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor((Date.now() - recordingStartedAtRef.current) / 1000);
+        setRecordingSeconds(elapsed);
+        if (elapsed >= 30 && mediaRecorderRef.current?.state === 'recording') {
+          mediaRecorderRef.current.stop();
+        }
+      }, 250);
+    } catch (error) {
+      console.error('Не удалось начать запись голоса:', error);
+      setUploadError('Нет доступа к микрофону. Разрешите использование микрофона в настройках браузера.');
+      setIsRecordingVoice(false);
+      setIsSendingVoice(false);
+    }
+  };
+
+  useEffect(() => () => {
+    if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
+    audioStreamRef.current?.getTracks().forEach(track => track.stop());
+    audioStreamRef.current = null;
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+  }, []);
 
   const presetChatPhotos = [
     'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80',
@@ -358,34 +464,28 @@ export const ChatRoom: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Voice message mockup if any */}
-                  {msg.voiceUrl || msg.voiceDuration ? (
-                    <div className="flex items-center gap-2.5 py-1">
-                      <button
-                        onClick={() => setPlayingVoiceId(playingVoiceId === msg.id ? null : msg.id)}
-                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
-                          isMe ? 'bg-white text-emerald-800' : 'bg-emerald-500 text-slate-950'
-                        }`}
-                      >
-                        {playingVoiceId === msg.id ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
-                      </button>
-
-                      {/* Waveform bars */}
-                      <div className="flex items-center gap-0.5 h-6">
-                        {[40, 70, 30, 90, 60, 80, 50, 95, 45, 65, 85, 35, 75, 55].map((height, i) => (
-                          <div
-                            key={i}
-                            className={`w-1 rounded-full transition-all duration-200 ${
-                              playingVoiceId === msg.id ? 'bg-emerald-300 animate-pulse' : 'bg-white/40'
-                            }`}
-                            style={{ height: `${height}%` }}
-                          />
-                        ))}
+                  {/* Real, playable voice message */}
+                  {msg.voiceUrl ? (
+                    <div className="min-w-[220px] max-w-full py-1">
+                      <div className="flex items-center gap-2 mb-1.5 text-xs font-semibold">
+                        <Mic size={14} className="shrink-0" />
+                        <span>Голосовое сообщение</span>
+                        <span className="ml-auto text-[10px] font-mono opacity-75">
+                          {Math.floor((msg.voiceDuration || 0) / 60)}:{String((msg.voiceDuration || 0) % 60).padStart(2, '0')}
+                        </span>
                       </div>
-
-                      <span className="text-[11px] font-mono opacity-80">
-                        {playingVoiceId === msg.id ? '0:07' : `0:${msg.voiceDuration || 14}`}
-                      </span>
+                      <audio
+                        controls
+                        preload="metadata"
+                        src={msg.voiceUrl}
+                        className="w-full h-9 max-w-[280px]"
+                        aria-label="Воспроизвести голосовое сообщение"
+                      />
+                    </div>
+                  ) : msg.voiceDuration ? (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Mic size={14} />
+                      <span>Голосовое сообщение недоступно</span>
                     </div>
                   ) : null}
 
@@ -663,10 +763,26 @@ export const ChatRoom: React.FC = () => {
           className="flex-1 min-w-0 bg-slate-800/90 border border-slate-700/80 rounded-2xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
         />
 
-        {inputText.trim() ? (
+        {isRecordingVoice ? (
+          <>
+            <span className="flex-1 min-w-0 text-sm text-rose-300 font-semibold animate-pulse">
+              ● Идёт запись {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, '0')} / 0:30
+            </span>
+            <button
+              type="button"
+              onClick={() => mediaRecorderRef.current?.stop()}
+              className="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center hover:bg-rose-400 active:scale-95 transition-all shrink-0"
+              title="Остановить и отправить голосовое сообщение"
+              aria-label="Остановить и отправить запись"
+            >
+              <Send size={18} />
+            </button>
+          </>
+        ) : inputText.trim() ? (
           <button
             type="submit"
-            className="w-10 h-10 rounded-2xl bg-emerald-500 text-slate-950 flex items-center justify-center hover:bg-emerald-400 active:scale-95 transition-all shadow-md shadow-emerald-500/25 shrink-0"
+            disabled={isSendingVoice}
+            className="w-10 h-10 rounded-2xl bg-emerald-500 text-slate-950 flex items-center justify-center hover:bg-emerald-400 active:scale-95 transition-all shadow-md shadow-emerald-500/25 shrink-0 disabled:opacity-50"
             title="Отправить сообщение"
           >
             <Send size={18} />
@@ -674,26 +790,13 @@ export const ChatRoom: React.FC = () => {
         ) : (
           <button
             type="button"
-            onClick={() => {
-              // Simulated voice note send
-              sendMessage(activeChat.id, undefined, undefined);
-              const now = new Date();
-              const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-              const voiceMsg: Message = {
-                id: 'msg-voice-' + Date.now(),
-                chatId: activeChat.id,
-                senderId: currentUser.id,
-                voiceDuration: 8,
-                timestamp: timeStr,
-                isRead: false
-              };
-              // Add voice message
-              sendMessage(activeChat.id, 'Голосовое сообщение (0:08)');
-            }}
-            className="w-10 h-10 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors shrink-0"
-            title="Голосовое сообщение"
+            onClick={() => void startOrStopVoiceRecording()}
+            disabled={isSendingVoice}
+            className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors shrink-0 disabled:opacity-50 ${isSendingVoice ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'}`}
+            title={isSendingVoice ? 'Подготавливаем голосовое сообщение…' : 'Записать голосовое сообщение'}
+            aria-label="Записать голосовое сообщение"
           >
-            <Mic size={18} />
+            {isSendingVoice ? <span className="text-[10px] font-bold">…</span> : <Mic size={18} />}
           </button>
         )}
       </form>
