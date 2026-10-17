@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import { collection, getDocs, limit, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import {
   Search,
@@ -35,9 +35,32 @@ export const FriendsSearch: React.FC = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [sendingTo, setSendingTo] = useState<string | null>(null);
+  const [sentRequestIds, setSentRequestIds] = useState<Set<string>>(() => new Set());
   const [actionMessage, setActionMessage] = useState<{ id: string; text: string } | null>(null);
 
   const pendingRequests = friendRequests.filter(r => r.toUserId === currentUser.id && r.status === 'pending');
+
+  // Track outgoing requests in real time so the add button disappears after sending.
+  useEffect(() => {
+    if (!currentUser.id) {
+      setSentRequestIds(new Set());
+      return;
+    }
+    const outgoingQuery = query(
+      collection(db, 'friendRequests'),
+      where('fromUserId', '==', currentUser.id),
+    );
+    return onSnapshot(outgoingQuery, (snapshot) => {
+      setSentRequestIds(new Set(
+        snapshot.docs
+          .filter((item) => item.data().status === 'pending' || item.data().status === 'accepted')
+          .map((item) => String(item.data().toUserId || ''))
+          .filter(Boolean),
+      ));
+    }, (error) => {
+      console.error('Could not sync outgoing friend requests:', error);
+    });
+  }, [currentUser.id]);
 
   // Network search reads only the deliberately public profile collection.
   // Phone numbers are never queried or matched.
@@ -299,23 +322,26 @@ export const FriendsSearch: React.FC = () => {
                     >
                       <MessageSquare size={16} />
                     </button>
-                    <button
-                      onClick={async () => {
-                        if (sendingTo) return;
-                        setSendingTo(user.id);
-                        try {
-                          await addFriend(user.id);
-                          setActionMessage({ id: user.id, text: 'Заявка отправлена' });
-                        } catch (error) {
-                          setActionMessage({ id: user.id, text: error instanceof Error ? error.message : 'Не удалось отправить заявку' });
-                        } finally { setSendingTo(null); }
-                      }}
-                      disabled={sendingTo === user.id}
-                      className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-50"
-                      title="Отправить заявку в друзья"
-                    >
-                      {sendingTo === user.id ? <span className="text-[10px]">…</span> : <UserPlus size={16} />}
-                    </button>
+                    {!sentRequestIds.has(user.id) && (
+                      <button
+                        onClick={async () => {
+                          if (sendingTo) return;
+                          setSendingTo(user.id);
+                          try {
+                            await addFriend(user.id);
+                            setSentRequestIds((previous) => new Set(previous).add(user.id));
+                            setActionMessage({ id: user.id, text: 'Заявка отправлена' });
+                          } catch (error) {
+                            setActionMessage({ id: user.id, text: error instanceof Error ? error.message : 'Не удалось отправить заявку' });
+                          } finally { setSendingTo(null); }
+                        }}
+                        disabled={sendingTo === user.id}
+                        className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-50"
+                        title="Отправить заявку в друзья"
+                      >
+                        {sendingTo === user.id ? <span className="text-[10px]">…</span> : <UserPlus size={16} />}
+                      </button>
+                    )}
                   </div>
                   {actionMessage?.id === user.id && <p role="status" className="basis-full text-[11px] text-emerald-400 mt-1">{actionMessage.text}</p>}
                 </div>
