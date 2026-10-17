@@ -416,6 +416,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
               notification.close();
             };
           });
+          if (incomingChanges.length > 0 && activeChatIdRef.current === chatId && document.visibilityState !== 'hidden') {
+            void updateDoc(doc(db, 'chats', chatId), { [`unreadCounts.${currentUserId}`]: 0 })
+              .catch((error) => console.warn('Не удалось сбросить счётчик открытого чата:', error));
+          }
         }
         const remoteMessages: Message[] = snapshot.docs.map((item) => {
           const data = item.data();
