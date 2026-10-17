@@ -56,6 +56,7 @@ export interface Chat {
   isPinned?: boolean;
   isMuted?: boolean;
   updatedAt: string;
+  updatedAtMs?: number;
   creatorId?: string;
   description?: string;
 }
