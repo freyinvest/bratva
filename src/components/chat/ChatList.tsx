@@ -210,8 +210,10 @@ export const ChatList: React.FC = () => {
                     onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                     className="w-13 h-13 rounded-2xl object-cover border border-slate-800 shadow-sm"
                   />
-                  {chat.type === 'direct' && peerUser?.status === 'online' ? (
-                    <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-950" />
+                  {chat.type === 'direct' ? (
+                    peerUser?.status === 'online' ? (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-950" />
+                    ) : null
                   ) : (
                     <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-slate-800 border border-slate-700 text-emerald-400 flex items-center justify-center text-[9px] font-bold">
                       👥
