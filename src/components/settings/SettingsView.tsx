@@ -29,7 +29,6 @@ export const SettingsView: React.FC = () => {
 
   const [cacheCleared, setCacheCleared] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState('dark-emerald');
-  const [privacyNumber, setPrivacyNumber] = useState('friends');
   const [autoDownload, setAutoDownload] = useState(true);
 
   const handleTestSound = () => {
@@ -176,22 +175,6 @@ export const SettingsView: React.FC = () => {
           </h3>
 
           <div className="space-y-2.5">
-            <div className="flex items-center justify-between p-2.5 bg-slate-950/50 rounded-2xl border border-slate-800/60">
-              <div>
-                <p className="text-xs font-bold text-white">Кто видит мой номер</p>
-                <p className="text-[11px] text-slate-400">Ограничение поиска по телефону</p>
-              </div>
-              <select
-                value={privacyNumber}
-                onChange={(e) => setPrivacyNumber(e.target.value)}
-                className="bg-slate-800 border border-slate-700 text-xs text-emerald-400 font-semibold rounded-xl px-2 py-1 focus:outline-none"
-              >
-                <option value="friends">Только друзья</option>
-                <option value="all">Все в Братве</option>
-                <option value="nobody">Никто</option>
-              </select>
-            </div>
-
             <div className="flex items-center justify-between p-2.5 bg-slate-950/50 rounded-2xl border border-slate-800/60">
               <div>
                 <p className="text-xs font-bold text-white">Автозагрузка медиа</p>
