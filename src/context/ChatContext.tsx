@@ -380,9 +380,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     if (!currentUserId || !remoteChatKey) return;
     const ids = remoteChatKey.split('|');
+    // The first snapshot contains message history; only play sounds for later incoming additions.
+    const initializedMessageStreams = new Set<string>();
     const unsubscribers = ids.map((chatId) => onSnapshot(
       query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc')),
       (snapshot) => {
+        const isInitialSnapshot = !initializedMessageStreams.has(chatId);
+        initializedMessageStreams.add(chatId);
+        if (!isInitialSnapshot && snapshot.docChanges().some((change) =>
+          change.type === 'added' && change.doc.data().senderId !== currentUserId
+        )) {
+          sounds.playReceive();
+        }
         const remoteMessages: Message[] = snapshot.docs.map((item) => {
           const data = item.data();
           return {
