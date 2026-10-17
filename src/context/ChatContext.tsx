@@ -34,6 +34,8 @@ interface ChatContextType {
   localCallStream: MediaStream | null;
   remoteCallStream: MediaStream | null;
   callError: string | null;
+  messageError: string | null;
+  clearMessageError: () => void;
   previewImage: string | null;
   chatFilter: 'all' | 'direct' | 'groups' | 'unread';
   isTypingUserId: string | null;
@@ -185,6 +187,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const [localCallStream, setLocalCallStream] = useState<MediaStream | null>(null);
   const [remoteCallStream, setRemoteCallStream] = useState<MediaStream | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -622,6 +625,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   ) => {
     if (!text?.trim() && !imageUrl) return;
     if (!currentUserId) return;
+    setMessageError(null);
 
     const sender = allUsers.find((user) => user.id === currentUserId);
     const chat = chats.find((item) => item.id === chatId);
@@ -683,6 +687,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       setDoc(doc(db, 'chats', chatId, 'messages', messageId), remoteMessage),
     ]).catch((error) => {
       console.error('Не удалось отправить сообщение в общий чат:', error);
+      setMessages((previous) => previous.filter((message) => message.id !== messageId));
+      setChats((previous) => previous.map((item) => item.id === chatId ? chat : item));
+      setMessageError('Сообщение не отправлено. Проверьте интернет и доступ Firebase к чатам.');
     });
   };
 
@@ -1141,6 +1148,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         localCallStream,
         remoteCallStream,
         callError,
+        messageError,
+        clearMessageError: () => setMessageError(null),
         previewImage,
         chatFilter,
         isTypingUserId,
