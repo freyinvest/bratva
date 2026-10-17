@@ -308,15 +308,25 @@ useEffect(() => {
   </div>
 
               <div className="grid grid-cols-6 gap-1.5 mb-2">
-                <button
-                  type="button"
-                  onClick={() => { setAvatar(''); setAvatarError(''); }}
-                  aria-label="Оставить без аватара"
-                  title="Без аватара"
-                  className={`aspect-square rounded-xl overflow-hidden border-2 flex items-center justify-center text-[10px] transition-all ${
-                    !avatar ? 'border-emerald-500 bg-slate-800 text-emerald-400' : 'border-slate-700 bg-slate-900 text-slate-500 hover:text-slate-300'
-                  }`}
-                >Пусто</button>
+                {avatar ? (
+                  <button
+                    type="button"
+                    onClick={() => setAvatar(avatar)}
+                    aria-label="Текущий выбранный аватар"
+                    title="Выбранный аватар"
+                    className="aspect-square rounded-xl overflow-hidden border-2 border-emerald-500 scale-95"
+                  >
+                    <img src={avatar} alt="Выбранный аватар" className="w-full h-full object-cover" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setAvatar(''); setAvatarError(''); }}
+                    aria-label="Оставить без аватара"
+                    title="Без аватара"
+                    className="aspect-square rounded-xl overflow-hidden border-2 border-emerald-500 bg-slate-800 text-emerald-400 flex items-center justify-center text-[10px]"
+                  >Пусто</button>
+                )}
                 {PRESET_AVATARS.filter((url) => url !== avatar).map((url) => (
                   <button
                     type="button"
@@ -328,11 +338,6 @@ useEffect(() => {
                     <img src={url} alt="Аватар" className="w-full h-full object-cover" />
                   </button>
                 ))}
-                {avatar && PRESET_AVATARS.includes(avatar) && (
-                  <button type="button" onClick={() => setAvatar(avatar)} className="aspect-square rounded-xl overflow-hidden border-2 border-emerald-500 scale-95">
-                    <img src={avatar} alt="Выбранный аватар" className="w-full h-full object-cover" />
-                  </button>
-                )}
               </div>
               <input
                 type="url"
