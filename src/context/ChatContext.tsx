@@ -105,30 +105,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [allUsers, setAllUsers] = useState<User[]>(() => {
-    try {
-      const saved = localStorage.getItem('bratva_users');
+    const userId = localStorage.getItem('bratva_current_user_id') || '';
+    if (!userId) return [];
 
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          // Не восстанавливаем встроенные демо-профили.
-          return parsed.filter(
-            (user: User) =>
-              user &&
-              typeof user.id === 'string' &&
-              !user.id.startsWith('user-belyi') &&
-              !user.id.startsWith('user-kosmos') &&
-              !user.id.startsWith('user-pchela') &&
-              !user.id.startsWith('user-fil') &&
-              !user.id.startsWith('user-olga') &&
-              !user.id.startsWith('user-artur')
-          );
-        }
+    try {
+      const scoped = localStorage.getItem(`bratva_users_${userId}`);
+      if (scoped) {
+        const parsed = JSON.parse(scoped);
+        if (Array.isArray(parsed)) return parsed.filter((user: User) => user && typeof user.id === 'string');
+      }
+
+      // Migrate only the signed-in user's own profile from legacy storage.
+      // Never import other accounts' cached users as this account's friends.
+      const legacy = localStorage.getItem('bratva_users');
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        if (Array.isArray(parsed)) return parsed.filter((user: User) => user?.id === userId);
       }
     } catch (error) {
       console.error('Не удалось прочитать локальных пользователей:', error);
     }
-
     return [];
   });
 
@@ -137,32 +133,43 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   });
 
   const [chats, setChats] = useState<Chat[]>(() => {
+    const userId = localStorage.getItem('bratva_current_user_id') || '';
+    if (!userId) return [];
     try {
-      const saved = localStorage.getItem('bratva_chats');
-      return saved ? JSON.parse(saved) : [];
+      const scoped = localStorage.getItem(`bratva_chats_${userId}`);
+      if (scoped) return JSON.parse(scoped);
+      const legacy = localStorage.getItem('bratva_chats');
+      const parsed = legacy ? JSON.parse(legacy) : [];
+      return Array.isArray(parsed) ? parsed.filter((chat: Chat) => chat.participants?.includes(userId)) : [];
     } catch {
       return [];
     }
   });
 
   const [messages, setMessages] = useState<Message[]>(() => {
+    const userId = localStorage.getItem('bratva_current_user_id') || '';
+    if (!userId) return [];
     try {
-      const saved = localStorage.getItem('bratva_messages');
-      return saved ? JSON.parse(saved) : [];
+      const scoped = localStorage.getItem(`bratva_messages_${userId}`);
+      if (scoped) return JSON.parse(scoped);
+      const legacyChats = localStorage.getItem('bratva_chats');
+      const legacyMessages = localStorage.getItem('bratva_messages');
+      const chatsForUser: Chat[] = legacyChats ? JSON.parse(legacyChats) : [];
+      const allowedChatIds = new Set(
+        Array.isArray(chatsForUser)
+          ? chatsForUser.filter((chat) => chat.participants?.includes(userId)).map((chat) => chat.id)
+          : [],
+      );
+      const parsed = legacyMessages ? JSON.parse(legacyMessages) : [];
+      return Array.isArray(parsed) ? parsed.filter((message: Message) => allowedChatIds.has(message.chatId)) : [];
     } catch {
       return [];
     }
   });
 
 
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>(() => {
-    try {
-      const saved = localStorage.getItem('bratva_friend_requests');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  // Friend requests are loaded from Firestore for the signed-in account.
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
 
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('chats');
@@ -186,8 +193,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('bratva_users', JSON.stringify(allUsers));
-  }, [allUsers]);
+    if (!currentUserId) return;
+    localStorage.setItem(`bratva_users_${currentUserId}`, JSON.stringify(allUsers));
+  }, [allUsers, currentUserId]);
 
   useEffect(() => {
     if (currentUserId) {
@@ -198,20 +206,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [currentUserId]);
 
   useEffect(() => {
-    localStorage.setItem('bratva_chats', JSON.stringify(chats));
-  }, [chats]);
+    if (!currentUserId) return;
+    localStorage.setItem(`bratva_chats_${currentUserId}`, JSON.stringify(chats));
+  }, [chats, currentUserId]);
 
   useEffect(() => {
-    localStorage.setItem('bratva_messages', JSON.stringify(messages));
-  }, [messages]);
-
-
-  useEffect(() => {
-    localStorage.setItem(
-      'bratva_friend_requests',
-      JSON.stringify(friendRequests)
-    );
-  }, [friendRequests]);
+    if (!currentUserId) return;
+    localStorage.setItem(`bratva_messages_${currentUserId}`, JSON.stringify(messages));
+  }, [messages, currentUserId]);
 
   const currentUser =
     allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
@@ -548,18 +550,39 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  // Вызывается после успешной Firebase-аутентификации.
+  // Load only this account's local cache; never carry another account's chats/users over.
   const setAuthenticatedUser = (user: User) => {
-    setAllUsers((prev) => {
-      const exists = prev.some((item) => item.id === user.id);
+    const loadArray = <T,>(key: string): T[] | null => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed as T[] : null;
+      } catch {
+        return null;
+      }
+    };
 
-      return exists
-        ? prev.map((item) => (item.id === user.id ? user : item))
-        : [user, ...prev];
-    });
+    const scopedUsers = loadArray<User>(`bratva_users_${user.id}`);
+    const scopedChats = loadArray<Chat>(`bratva_chats_${user.id}`);
+    const scopedMessages = loadArray<Message>(`bratva_messages_${user.id}`);
 
+    const legacyChats = loadArray<Chat>('bratva_chats') || [];
+    const legacyMessages = loadArray<Message>('bratva_messages') || [];
+    const migratedChats = legacyChats.filter((chat) => chat.participants?.includes(user.id));
+    const migratedChatIds = new Set(migratedChats.map((chat) => chat.id));
+    const migratedMessages = legacyMessages.filter((message) => migratedChatIds.has(message.chatId));
+
+    const nextUsers = scopedUsers
+      ? [user, ...scopedUsers.filter((item) => item.id !== user.id)]
+      : [user];
+    setAllUsers(nextUsers);
+    setChats(scopedChats ?? migratedChats);
+    setMessages(scopedMessages ?? migratedMessages);
+    setFriendRequests([]);
     setCurrentUserId(user.id);
     setActiveChatId(null);
+    setActiveTab('chats');
     setIsAuthModalOpen(false);
     sounds.playReceive();
   };
