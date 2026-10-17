@@ -132,8 +132,9 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
                 >
                   <div className="relative">
                     <img
-                      src={user.avatar}
+                      src={user.avatar || PRESET_AVATARS[0]}
                       alt={user.name}
+                      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                       className="w-11 h-11 rounded-full object-cover border border-slate-700"
                     />
                     {user.status === 'online' && (
@@ -231,8 +232,9 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
                       }`}
                     >
                       <img
-                        src={user.avatar}
+                        src={user.avatar || PRESET_AVATARS[0]}
                         alt={user.name}
+                        onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                         className="w-8 h-8 rounded-full object-cover"
                       />
                       <div className="flex-1 min-w-0">

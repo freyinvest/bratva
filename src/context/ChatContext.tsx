@@ -4,6 +4,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
 } from 'react';
 import {
   User,
@@ -17,7 +18,7 @@ import {
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
 
 interface ChatContextType {
@@ -30,6 +31,11 @@ interface ChatContextType {
   activeChat: Chat | null;
   activeTab: AppTab;
   callState: CallState | null;
+  localCallStream: MediaStream | null;
+  remoteCallStream: MediaStream | null;
+  callError: string | null;
+  messageError: string | null;
+  clearMessageError: () => void;
   previewImage: string | null;
   chatFilter: 'all' | 'direct' | 'groups' | 'unread';
   isTypingUserId: string | null;
@@ -59,7 +65,7 @@ interface ChatContextType {
     avatar?: string,
     description?: string
   ) => string;
-  startDirectChat: (targetUserId: string) => string;
+  startDirectChat: (targetUserId: string, targetProfile?: User) => string;
   addFriend: (targetUserId: string) => Promise<void>;
   acceptFriendRequest: (requestId: string) => void;
   declineFriendRequest: (requestId: string) => void;
@@ -76,6 +82,8 @@ interface ChatContextType {
     bio?: string;
   }) => void;
   startCall: (targetUser: User, type: 'audio' | 'video') => void;
+  acceptCall: () => Promise<void>;
+  declineCall: () => void;
   endCall: () => void;
   toggleCallMute: () => void;
   toggleCallVideo: () => void;
@@ -132,6 +140,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     return localStorage.getItem('bratva_current_user_id') || '';
   });
 
+  const [remoteChatIds, setRemoteChatIds] = useState<string[]>([]);
+
   const [chats, setChats] = useState<Chat[]>(() => {
     const userId = localStorage.getItem('bratva_current_user_id') || '';
     if (!userId) return [];
@@ -174,6 +184,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('chats');
   const [callState, setCallState] = useState<CallState | null>(null);
+  const [localCallStream, setLocalCallStream] = useState<MediaStream | null>(null);
+  const [remoteCallStream, setRemoteCallStream] = useState<MediaStream | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+  const [messageError, setMessageError] = useState<string | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [chatFilter, setChatFilter] = useState<
     'all' | 'direct' | 'groups' | 'unread'
@@ -231,6 +247,297 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       console.warn('Не удалось сохранить сообщения в локальном кэше:', error);
     }
   }, [messages, currentUserId]);
+
+
+  // Sync shared conversations from Firestore so every participant sees the same chat list.
+  useEffect(() => {
+    if (!currentUserId) {
+      setRemoteChatIds([]);
+      return;
+    }
+    const sharedChatsQuery = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', currentUserId),
+    );
+    return onSnapshot(sharedChatsQuery, (snapshot) => {
+      const remoteChats = snapshot.docs.map((item) => {
+        const data = item.data();
+        return {
+          id: item.id,
+          type: data.type === 'group' ? 'group' as const : 'direct' as const,
+          title: typeof data.title === 'string' ? data.title : 'Чат',
+          avatar: typeof data.avatar === 'string' ? data.avatar : '',
+          participants: Array.isArray(data.participants) ? data.participants.filter((id): id is string => typeof id === 'string') : [],
+          unreadCount: typeof data.unreadCount === 'number' ? data.unreadCount : 0,
+          isPinned: Boolean(data.isPinned),
+          isMuted: Boolean(data.isMuted),
+          updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
+          creatorId: typeof data.creatorId === 'string' ? data.creatorId : undefined,
+          description: typeof data.description === 'string' ? data.description : undefined,
+          lastMessage: data.lastMessage && typeof data.lastMessage === 'object' ? data.lastMessage as Chat['lastMessage'] : undefined,
+        } satisfies Chat;
+      });
+      const ids = remoteChats.map((chat) => chat.id);
+      setRemoteChatIds(ids);
+      setChats((previous) => {
+        const localOnly = previous.filter((chat) => !ids.includes(chat.id));
+        return [...remoteChats, ...localOnly];
+      });
+    }, (error) => {
+      console.error('Не удалось синхронизировать чаты из Firebase:', error);
+    });
+  }, [currentUserId]);
+
+
+
+  // Keep the signed-in profile's presence fresh and expire it after a missed heartbeat.
+  useEffect(() => {
+    if (!currentUserId) return;
+    const publishPresence = (online: boolean) => {
+      const lastSeenAt = Date.now();
+      const presence: Pick<User, 'status' | 'lastSeen' | 'lastSeenAt'> = {
+        status: online ? 'online' : 'offline',
+        lastSeen: online ? 'в сети' : 'был(а) недавно',
+        lastSeenAt,
+      };
+      void Promise.all([
+        setDoc(doc(db, 'users', currentUserId), presence, { merge: true }),
+        setDoc(doc(db, 'publicProfiles', currentUserId), presence, { merge: true }),
+      ]).catch((error) => console.warn('Не удалось обновить статус присутствия:', error));
+      setAllUsers((previous) => previous.map((user) =>
+        user.id === currentUserId ? { ...user, ...presence } : user
+      ));
+    };
+    publishPresence(true);
+    const heartbeatId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') publishPresence(true);
+    }, 30_000);
+    const refresh = () => {
+      if (document.visibilityState === 'visible') publishPresence(true);
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(heartbeatId);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      publishPresence(false);
+    };
+  }, [currentUserId]);
+
+  // Refresh peer profiles live so avatar/name changes propagate to chats and friends.
+  const knownProfileIds = Array.from(new Set([
+    ...allUsers.map((user) => user.id),
+    ...chats.flatMap((chat) => chat.participants),
+  ])).filter((id) => id && id !== currentUserId).sort().join('|');
+
+  useEffect(() => {
+    if (!currentUserId || !knownProfileIds) return;
+    const unsubscribers = knownProfileIds.split('|').map((userId) => onSnapshot(
+      doc(db, 'publicProfiles', userId),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        const data = snapshot.data();
+        const lastSeenAt = typeof data.lastSeenAt === 'number' ? data.lastSeenAt : null;
+        const online = data.status === 'online' && lastSeenAt !== null && Date.now() - lastSeenAt < 120_000;
+        const lastSeen = online ? 'в сети' : lastSeenAt !== null
+          ? (Math.floor((Date.now() - lastSeenAt) / 60_000) < 2
+              ? 'был(а) недавно'
+              : `был(а) ${Math.floor((Date.now() - lastSeenAt) / 60_000)} мин. назад`)
+          : (typeof data.lastSeen === 'string' ? data.lastSeen : 'не в сети');
+        setAllUsers((previous) => {
+          const existing = previous.find((user) => user.id === userId);
+          const profile: User = {
+            ...(existing || EMPTY_USER),
+            id: userId,
+            name: typeof data.name === 'string' && data.name ? data.name : existing?.name || 'Пользователь',
+            nickname: typeof data.nickname === 'string' ? data.nickname : existing?.nickname || '',
+            phone: '',
+            email: '',
+            avatar: typeof data.avatar === 'string' ? data.avatar : existing?.avatar || '',
+            bio: typeof data.bio === 'string' ? data.bio : existing?.bio || '',
+            status: online ? 'online' : 'offline',
+            lastSeen,
+            ...(lastSeenAt !== null ? { lastSeenAt } : {}),
+            badge: typeof data.badge === 'string' ? data.badge : existing?.badge || '',
+          };
+          if (existing && existing.name === profile.name && existing.nickname === profile.nickname &&
+              existing.avatar === profile.avatar && existing.bio === profile.bio &&
+              existing.status === profile.status && existing.lastSeen === profile.lastSeen &&
+              existing.badge === profile.badge) return previous;
+          return existing
+            ? previous.map((user) => user.id === userId ? profile : user)
+            : [...previous, profile];
+        });
+      },
+      (error) => console.warn('Не удалось обновить профиль собеседника:', error),
+    ));
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [currentUserId, knownProfileIds]);
+
+  // Subscribe to each shared conversation's message stream.
+  const remoteChatKey = remoteChatIds.slice().sort().join('|');
+  useEffect(() => {
+    if (!currentUserId || !remoteChatKey) return;
+    const ids = remoteChatKey.split('|');
+    const unsubscribers = ids.map((chatId) => onSnapshot(
+      query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc')),
+      (snapshot) => {
+        const remoteMessages: Message[] = snapshot.docs.map((item) => {
+          const data = item.data();
+          return {
+            id: item.id,
+            chatId,
+            senderId: typeof data.senderId === 'string' ? data.senderId : '',
+            text: typeof data.text === 'string' ? data.text : undefined,
+            imageUrl: typeof data.imageUrl === 'string' ? data.imageUrl : undefined,
+            voiceUrl: typeof data.voiceUrl === 'string' ? data.voiceUrl : undefined,
+            voiceDuration: typeof data.voiceDuration === 'number' ? data.voiceDuration : undefined,
+            timestamp: typeof data.timestamp === 'string' ? data.timestamp : '',
+            isRead: Boolean(data.isRead),
+            replyToMessage: data.replyToMessage as Message['replyToMessage'],
+            reactions: data.reactions && typeof data.reactions === 'object' ? data.reactions as Message['reactions'] : {},
+          };
+        });
+        setMessages((previous) => [
+          ...previous.filter((message) => message.chatId !== chatId),
+          ...remoteMessages,
+        ]);
+      },
+      (error) => console.error('Не удалось синхронизировать сообщения:', chatId, error),
+    ));
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [currentUserId, remoteChatKey]);
+
+
+  // Incoming call notifications are shared between accounts through Firestore.
+  useEffect(() => {
+    if (!currentUserId) return;
+    return onSnapshot(
+      query(collection(db, 'calls'), where('calleeId', '==', currentUserId)),
+      (snapshot) => {
+        const incoming = snapshot.docs.find((item) => {
+          const data = item.data();
+          const createdAt = typeof data.createdAt?.toMillis === 'function' ? data.createdAt.toMillis() : 0;
+          return data.status === 'ringing' &&
+            item.id !== callState?.callId &&
+            createdAt > 0 &&
+            Date.now() - createdAt < 60_000;
+        });
+        if (!incoming || callState) return;
+        const data = incoming.data();
+        setCallError(null);
+        setCallState({
+          isActive: true,
+          callId: incoming.id,
+          direction: 'incoming',
+          type: 'audio',
+          user: {
+            id: String(data.callerId || ''),
+            name: String(data.callerName || 'Пользователь'),
+            nickname: String(data.callerNickname || ''),
+            phone: '',
+            email: '',
+            avatar: String(data.callerAvatar || ''),
+            bio: '',
+            status: 'online',
+            lastSeen: 'в сети',
+          },
+          status: 'ringing',
+          isMuted: false,
+          isVideoOff: true,
+          durationSeconds: 0,
+        });
+      },
+      (error) => console.error('Не удалось получить входящие звонки:', error),
+    );
+  }, [currentUserId, callState?.callId, callState?.isActive]);
+
+  // Negotiate WebRTC media and listen for the other participant's ICE candidates.
+  useEffect(() => {
+    if (!callState?.callId) return;
+    const callRef = doc(db, 'calls', callState.callId);
+    const remoteCandidateCollection = callState.direction === 'outgoing' ? 'calleeCandidates' : 'callerCandidates';
+    const stopCall = onSnapshot(callRef, async (snapshot) => {
+      if (!snapshot.exists()) return;
+      const data = snapshot.data();
+      if (data.status === 'declined' || data.status === 'ended') {
+        peerConnectionRef.current?.close();
+        peerConnectionRef.current = null;
+        setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+        setRemoteCallStream(null);
+        setCallState((current) => current?.callId === snapshot.id ? null : current);
+        return;
+      }
+      const peer = peerConnectionRef.current;
+      if (!peer) return;
+      try {
+        if (data.status === 'accepted' && callState.direction === 'outgoing' && !peer.localDescription) {
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          await updateDoc(callRef, { offer: { type: offer.type, sdp: offer.sdp }, status: 'connecting' });
+          setCallState((current) => current?.callId === snapshot.id ? { ...current, status: 'connecting' } : current);
+        }
+        if (data.offer && callState.direction === 'incoming' && !peer.remoteDescription) {
+          await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
+          for (const candidate of pendingIceCandidatesRef.current.splice(0)) {
+            await peer.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => undefined);
+          }
+          const answer = await peer.createAnswer();
+          await peer.setLocalDescription(answer);
+          await updateDoc(callRef, { answer: { type: answer.type, sdp: answer.sdp }, status: 'connecting' });
+          setCallState((current) => current?.callId === snapshot.id ? { ...current, status: 'connecting' } : current);
+        }
+        if (data.answer && callState.direction === 'outgoing' && !peer.remoteDescription) {
+          await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+          for (const candidate of pendingIceCandidatesRef.current.splice(0)) {
+            await peer.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => undefined);
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка соединения WebRTC:', error);
+        setCallError('Не удалось установить аудиосоединение. Проверьте разрешение на микрофон и подключение.');
+      }
+    }, (error) => {
+      console.error('Не удалось отслеживать состояние звонка:', error);
+      setCallError('Потеряно соединение с сигнализацией звонка.');
+    });
+    const stopCandidates = onSnapshot(
+      collection(db, 'calls', callState.callId, remoteCandidateCollection),
+      (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type !== 'added') return;
+          const candidate = change.doc.data() as RTCIceCandidateInit;
+          const peer = peerConnectionRef.current;
+          if (peer?.remoteDescription) {
+            void peer.addIceCandidate(new RTCIceCandidate(candidate)).catch((error) =>
+              console.warn('ICE-кандидат отклонён:', error)
+            );
+          } else {
+            pendingIceCandidatesRef.current.push(candidate);
+          }
+        });
+      },
+      (error) => console.error('Не удалось получить ICE-кандидаты:', error),
+    );
+    return () => { stopCall(); stopCandidates(); };
+  }, [callState?.callId, callState?.direction]);
+
+
+  useEffect(() => {
+    if (!callState || callState.direction !== 'outgoing' || callState.status !== 'ringing') return;
+    const callId = callState.callId;
+    const timeout = window.setTimeout(() => {
+      void updateDoc(doc(db, 'calls', callId), { status: 'ended' }).catch(() => undefined);
+      setCallError('На звонок не ответили. Попробуйте ещё раз.');
+      setCallState((current) => current?.callId === callId ? null : current);
+      peerConnectionRef.current?.close();
+      peerConnectionRef.current = null;
+      setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+      setRemoteCallStream(null);
+    }, 45_000);
+    return () => window.clearTimeout(timeout);
+  }, [callState?.callId, callState?.direction, callState?.status]);
 
   const currentUser =
     allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
@@ -318,49 +625,72 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   ) => {
     if (!text?.trim() && !imageUrl) return;
     if (!currentUserId) return;
+    setMessageError(null);
 
     const sender = allUsers.find((user) => user.id === currentUserId);
-    if (!sender) return;
+    const chat = chats.find((item) => item.id === chatId);
+    if (!sender || !chat) return;
 
     const now = new Date();
-    const timeStr =
-      String(now.getHours()).padStart(2, '0') +
-      ':' +
+    const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
       String(now.getMinutes()).padStart(2, '0');
-
+    const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
     const newMsg: Message = {
-      id: 'msg-' + Date.now(),
+      id: messageId,
       chatId,
       senderId: sender.id,
-      text,
-      imageUrl,
+      ...(text?.trim() ? { text: text.trim() } : {}),
+      ...(imageUrl ? { imageUrl } : {}),
       timestamp: timeStr,
       isRead: false,
-      replyToMessage: replyTo,
+      ...(replyTo ? { replyToMessage: replyTo } : {}),
       reactions: {},
     };
 
     sounds.playSend();
     setMessages((prev) => [...prev, newMsg]);
 
-    const previewText = imageUrl ? '📷 Фотография' : text || '';
+    const previewText = imageUrl ? '📷 Фотография' : text?.trim() || '';
+    const updatedChat: Chat = {
+      ...chat,
+      updatedAt: timeStr,
+      lastMessage: {
+        text: previewText,
+        timestamp: timeStr,
+        senderId: sender.id,
+        isRead: false,
+      },
+    };
+    setChats((prev) => prev.map((item) => item.id === chatId ? updatedChat : item));
 
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === chatId
-          ? {
-              ...chat,
-              updatedAt: timeStr,
-              lastMessage: {
-                text: previewText,
-                timestamp: timeStr,
-                senderId: sender.id,
-                isRead: false,
-              },
-            }
-          : chat
-      )
-    );
+    // The same chat document and message subcollection are shared by every participant.
+    const remoteMessage: Record<string, unknown> = {
+      id: messageId,
+      chatId,
+      senderId: sender.id,
+      timestamp: timeStr,
+      isRead: false,
+      createdAt: serverTimestamp(),
+      reactions: {},
+    };
+    if (text?.trim()) remoteMessage.text = text.trim();
+    if (imageUrl) remoteMessage.imageUrl = imageUrl;
+    if (replyTo) remoteMessage.replyToMessage = replyTo;
+
+    void Promise.all([
+      setDoc(doc(db, 'chats', chatId), {
+        ...updatedChat,
+        participants: chat.participants,
+        updatedAt: timeStr,
+        lastMessage: updatedChat.lastMessage,
+      }, { merge: true }),
+      setDoc(doc(db, 'chats', chatId, 'messages', messageId), remoteMessage),
+    ]).catch((error) => {
+      console.error('Не удалось отправить сообщение в общий чат:', error);
+      setMessages((previous) => previous.filter((message) => message.id !== messageId));
+      setChats((previous) => previous.map((item) => item.id === chatId ? chat : item));
+      setMessageError('Сообщение не отправлено. Проверьте интернет и доступ Firebase к чатам.');
+    });
   };
 
   const toggleReaction = (messageId: string, emoji: string) => {
@@ -447,62 +777,62 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setMessages((prev) => [...prev, welcomeMsg]);
+    void Promise.all([
+      setDoc(doc(db, 'chats', newChatId), newChat),
+      setDoc(doc(db, 'chats', newChatId, 'messages', welcomeMsg.id), {
+        ...welcomeMsg,
+        createdAt: serverTimestamp(),
+      }),
+    ]).catch((error) => console.error('Не удалось сохранить группу в Firebase:', error));
     setActiveChatId(newChatId);
 
     return newChatId;
   };
 
-  const startDirectChat = (targetUserId: string): string => {
-    if (!currentUserId) return '';
+  const startDirectChat = (targetUserId: string, targetProfile?: User): string => {
+    if (!currentUserId || !targetUserId || targetUserId === currentUserId) return '';
 
-    const existing = chats.find(
-      (chat) =>
-        chat.type === 'direct' &&
-        chat.participants.includes(currentUserId) &&
-        chat.participants.includes(targetUserId)
-    );
-
-    if (existing) {
-      setActiveChatId(existing.id);
-      setActiveTab('chats');
-      return existing.id;
-    }
-
-    const targetUser = allUsers.find((user) => user.id === targetUserId);
-    if (!targetUser || targetUser.id === currentUserId) return '';
-
+    const targetUser = allUsers.find((user) => user.id === targetUserId) || targetProfile;
     const creator = allUsers.find((user) => user.id === currentUserId);
-    if (!creator) return '';
+    if (!targetUser || !creator) return '';
+    setAllUsers((previous) => previous.some((user) => user.id === targetUser.id) ? previous : [...previous, targetUser]);
 
-    const newChatId = 'chat-dir-' + Date.now();
+    // A stable ID makes both accounts open the exact same direct conversation.
+    const sharedChatId = 'direct-' + [currentUserId, targetUserId].sort().join('-');
+    const existing = chats.find((chat) =>
+      chat.type === 'direct' &&
+      chat.participants.includes(currentUserId) &&
+      chat.participants.includes(targetUserId)
+    );
     const now = new Date();
-    const timeStr =
-      String(now.getHours()).padStart(2, '0') +
-      ':' +
+    const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
       String(now.getMinutes()).padStart(2, '0');
-
-    const newChat: Chat = {
-      id: newChatId,
+    const chat: Chat = {
+      ...(existing || {}),
+      id: sharedChatId,
       type: 'direct',
       title: targetUser.name,
-      avatar: targetUser.avatar,
-      participants: [creator.id, targetUserId],
-      unreadCount: 0,
-      isPinned: false,
-      updatedAt: timeStr,
-      lastMessage: {
-        text: 'Диалог начат',
-        timestamp: timeStr,
-        senderId: creator.id,
-        isRead: true,
-      },
+      avatar: targetUser.avatar || '',
+      participants: [currentUserId, targetUserId].sort(),
+      unreadCount: existing?.unreadCount || 0,
+      isPinned: existing?.isPinned || false,
+      updatedAt: existing?.updatedAt || timeStr,
+      ...(existing?.lastMessage ? { lastMessage: existing.lastMessage } : {}),
     };
 
-    setChats((prev) => [newChat, ...prev]);
-    setActiveChatId(newChatId);
+    setChats((previous) => [
+      chat,
+      ...previous.filter((item) => item.id !== sharedChatId &&
+        !(item.type === 'direct' && item.participants.includes(currentUserId) && item.participants.includes(targetUserId))),
+    ]);
+    setMessages((previous) => previous.map((message) =>
+      existing && message.chatId === existing.id ? { ...message, chatId: sharedChatId } : message
+    ));
+    setActiveChatId(sharedChatId);
     setActiveTab('chats');
-
-    return newChatId;
+    void setDoc(doc(db, 'chats', sharedChatId), chat, { merge: true })
+      .catch((error) => console.error('Не удалось создать общий личный чат:', error));
+    return sharedChatId;
   };
 
   const addFriend = async (targetUserId: string): Promise<void> => {
@@ -638,36 +968,131 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     console.warn('Используй регистрацию через Firebase.');
   };
 
-  const startCall = (targetUser: User, type: 'audio' | 'video') => {
-    sounds.playTap();
-
-    setCallState({
-      isActive: true,
-      type,
-      user: targetUser,
-      status: 'ringing',
-      isMuted: false,
-      isVideoOff: false,
-      durationSeconds: 0,
+  const prepareCallPeer = (callId: string, role: 'caller' | 'callee', stream: MediaStream) => {
+    const peer = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
     });
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = peer;
+    pendingIceCandidatesRef.current = [];
+    stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+    peer.ontrack = (event) => {
+      if (event.streams[0]) setRemoteCallStream(event.streams[0]);
+    };
+    peer.onicecandidate = (event) => {
+      if (!event.candidate) return;
+      const bucket = role === 'caller' ? 'callerCandidates' : 'calleeCandidates';
+      void addDoc(collection(db, 'calls', callId, bucket), event.candidate.toJSON())
+        .catch((error) => console.error('Не удалось отправить ICE-кандидат:', error));
+    };
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === 'connected') {
+        setCallError(null);
+        setCallState((current) => current?.callId === callId ? { ...current, status: 'connected' } : current);
+      } else if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
+        setCallError('Соединение нестабильно. Попробуйте перезвонить.');
+      }
+    };
+    setLocalCallStream(stream);
+    return peer;
+  };
 
-    setTimeout(() => {
-      setCallState((curr) => {
-        if (!curr || !curr.isActive) return null;
-        return { ...curr, status: 'connected' };
+  const startCall = async (targetUser: User, _type: 'audio' | 'video') => {
+    if (!currentUserId || !targetUser.id || targetUser.id === currentUserId || callState) return;
+    setCallError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCallError('Браузер не поддерживает доступ к микрофону. Откройте сайт по HTTPS.');
+      return;
+    }
+    const callId = 'call-' + currentUserId + '-' + Date.now();
+    const caller = allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      await setDoc(doc(db, 'calls', callId), {
+        callerId: currentUserId,
+        calleeId: targetUser.id,
+        callerName: caller.name || 'Пользователь',
+        callerNickname: caller.nickname || '',
+        callerAvatar: caller.avatar || '',
+        calleeName: targetUser.name || 'Пользователь',
+        calleeAvatar: targetUser.avatar || '',
+        type: 'audio',
+        status: 'ringing',
+        createdAt: serverTimestamp(),
       });
-    }, 2500);
+      prepareCallPeer(callId, 'caller', stream);
+      setCallState({
+        isActive: true,
+        callId,
+        direction: 'outgoing',
+        type: 'audio',
+        user: targetUser,
+        status: 'ringing',
+        isMuted: false,
+        isVideoOff: true,
+        durationSeconds: 0,
+      });
+    } catch (error) {
+      console.error('Не удалось начать аудиозвонок:', error);
+      setCallError('Не удалось включить микрофон или начать вызов. Разрешите доступ к микрофону и попробуйте ещё раз.');
+      setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+      await updateDoc(doc(db, 'calls', callId), { status: 'ended' }).catch(() => undefined);
+    }
+  };
+
+  const acceptCall = async () => {
+    const activeCall = callState;
+    if (!activeCall || activeCall.direction !== 'incoming') return;
+    setCallError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone is not supported');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      prepareCallPeer(activeCall.callId, 'callee', stream);
+      await updateDoc(doc(db, 'calls', activeCall.callId), { status: 'accepted' });
+      setCallState((current) => current?.callId === activeCall.callId
+        ? { ...current, status: 'connecting' } : current);
+    } catch (error) {
+      console.error('Не удалось ответить на звонок:', error);
+      setCallError('Не удалось включить микрофон. Разрешите доступ и попробуйте ответить ещё раз.');
+      setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+    }
+  };
+
+  const declineCall = () => {
+    setCallError(null);
+    const activeCall = callState;
+    if (activeCall) {
+      void updateDoc(doc(db, 'calls', activeCall.callId), { status: 'declined' })
+        .catch((error) => console.warn('Не удалось отклонить вызов:', error));
+    }
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+    setRemoteCallStream(null);
+    setCallState(null);
   };
 
   const endCall = () => {
-    sounds.playTap();
+    setCallError(null);
+    const activeCall = callState;
+    if (activeCall) {
+      void updateDoc(doc(db, 'calls', activeCall.callId), { status: 'ended' })
+        .catch((error) => console.warn('Не удалось завершить вызов:', error));
+    }
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+    setRemoteCallStream(null);
     setCallState(null);
   };
 
   const toggleCallMute = () => {
-    setCallState((curr) =>
-      curr ? { ...curr, isMuted: !curr.isMuted } : null
-    );
+    setCallState((current) => {
+      if (!current) return null;
+      const nextMuted = !current.isMuted;
+      localCallStream?.getAudioTracks().forEach((track) => { track.enabled = !nextMuted; });
+      return { ...current, isMuted: nextMuted };
+    });
   };
 
   const toggleCallVideo = () => {
@@ -720,6 +1145,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         activeChat,
         activeTab,
         callState,
+        localCallStream,
+        remoteCallStream,
+        callError,
+        messageError,
+        clearMessageError: () => setMessageError(null),
         previewImage,
         chatFilter,
         isTypingUserId,
@@ -747,6 +1177,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         setAuthenticatedUser,
         registerUser,
         startCall,
+        acceptCall,
+        declineCall,
         endCall,
         toggleCallMute,
         toggleCallVideo,

@@ -155,13 +155,14 @@ useEffect(() => {
           <div className="relative mb-3">
             <div className="w-24 h-24 rounded-3xl p-1 bg-gradient-to-tr from-emerald-500 via-teal-400 to-indigo-500 shadow-lg shadow-emerald-500/20">
               <img
-                src={currentUser.avatar}
+                src={currentUser.avatar || PRESET_AVATARS[0]}
                 alt={currentUser.name}
+                onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                 className="w-full h-full rounded-[22px] object-cover"
               />
             </div>
             <span className="absolute -bottom-1 -right-1 px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[10px] border-2 border-slate-900 uppercase">
-              В сети
+              {currentUser.status === 'online' ? 'В сети' : currentUser.lastSeen || 'Не в сети'}
             </span>
           </div>
 
@@ -313,8 +314,9 @@ useEffect(() => {
   )}
   <div className="flex items-center gap-3 mb-3">
     <img
-      src={avatar}
+      src={avatar || PRESET_AVATARS[0]}
       alt="Предпросмотр аватара"
+      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
       className="w-14 h-14 rounded-xl object-cover border border-slate-700"
     />
     <p className="text-xs text-slate-400">Предпросмотр выбранной фотографии</p>

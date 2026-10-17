@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { User } from '../../types';
+import { PRESET_AVATARS } from '../../data/mockData';
 
 export const FriendsSearch: React.FC = () => {
   const {
@@ -231,8 +232,9 @@ export const FriendsSearch: React.FC = () => {
                   className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between gap-3"
                 >
                   <img
-                    src={req.fromUser.avatar}
+                    src={req.fromUser.avatar || PRESET_AVATARS[0]}
                     alt={req.fromUser.name}
+                    onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                     className="w-12 h-12 rounded-2xl object-cover border border-slate-700"
                   />
                   <div className="flex-1 min-w-0">
@@ -288,8 +290,9 @@ export const FriendsSearch: React.FC = () => {
                 >
                   <div className="relative shrink-0">
                     <img
-                      src={user.avatar}
+                      src={user.avatar || PRESET_AVATARS[0]}
                       alt={user.name}
+                      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                       className="w-12 h-12 rounded-2xl object-cover border border-slate-700"
                     />
                     {user.status === 'online' && (
@@ -316,7 +319,7 @@ export const FriendsSearch: React.FC = () => {
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
-                      onClick={() => startDirectChat(user.id)}
+                      onClick={() => startDirectChat(user.id, user)}
                       className="p-2.5 rounded-xl bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-slate-700 hover:border-emerald-500 transition-all shadow-sm"
                       title="Написать"
                     >
@@ -363,8 +366,9 @@ export const FriendsSearch: React.FC = () => {
             </button>
 
             <img
-              src={currentUser.avatar}
+              src={currentUser.avatar || PRESET_AVATARS[0]}
               alt={currentUser.name}
+              onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
               className="w-16 h-16 rounded-2xl mx-auto object-cover border-2 border-emerald-400 shadow-md mb-3"
             />
             <h3 className="text-base font-black text-white">{currentUser.name}</h3>

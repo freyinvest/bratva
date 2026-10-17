@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Phone,
-  Video,
   MoreVertical,
   Paperclip,
   Smile,
@@ -21,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { Message, User } from '../../types';
+import { PRESET_AVATARS } from '../../data/mockData';
 
 export const ChatRoom: React.FC = () => {
   const {
@@ -35,7 +35,9 @@ export const ChatRoom: React.FC = () => {
     deleteMessage,
     startCall,
     isTypingUserId,
-    setPreviewImage
+    setPreviewImage,
+    messageError,
+    clearMessageError
   } = useChat();
 
   const [inputText, setInputText] = useState('');
@@ -173,13 +175,13 @@ export const ChatRoom: React.FC = () => {
   const emojis = ['😀', '🔥', '🤝', '👍', '🥊', '💪', '🚀', '❤️', '😂', '💯', '👑', '😎', '⚡', '💣'];
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-100 relative">
+    <div className="flex flex-col h-full min-h-0 bg-slate-950 text-slate-100 relative">
    
  
 
     {/* Chat Room Top Bar */}
   {/* Chat Room Top Bar */}
-      <div className="p-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-md flex items-center justify-between z-20">
+      <div className="shrink-0 p-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-md flex items-center justify-between z-20">
         <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={() => setActiveChatId(null)}
@@ -195,8 +197,9 @@ export const ChatRoom: React.FC = () => {
           >
             <div className="relative shrink-0">
               <img
-                src={activeChat.avatar}
-                alt={activeChat.title}
+                src={(activeChat.type === 'direct' ? otherUser?.avatar : activeChat.avatar) || activeChat.avatar || PRESET_AVATARS[0]}
+                alt={activeChat.type === 'direct' ? otherUser?.name || activeChat.title : activeChat.title}
+                onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                 className="w-10 h-10 rounded-2xl object-cover border border-slate-800 shadow-sm"
               />
               {activeChat.type === 'direct' && otherUser?.status === 'online' && (
@@ -206,7 +209,7 @@ export const ChatRoom: React.FC = () => {
 
             <div className="min-w-0">
               <h2 className="font-bold text-sm text-slate-100 group-hover:text-emerald-400 transition-colors truncate">
-                {activeChat.title}
+                {activeChat.type === 'direct' ? otherUser?.name || activeChat.title : activeChat.title}
               </h2>
               <p className="text-[11px] text-slate-400 truncate">
                 {isOtherTyping ? (
@@ -233,13 +236,6 @@ export const ChatRoom: React.FC = () => {
                 title="Аудиозвонок"
               >
                 <Phone size={18} />
-              </button>
-              <button
-                onClick={() => startCall(otherUser, 'video')}
-                className="p-2 rounded-full hover:bg-slate-800 text-slate-300 hover:text-emerald-400 transition-colors"
-                title="Видеозвонок"
-              >
-                <Video size={18} />
               </button>
             </>
           )}
@@ -281,7 +277,7 @@ export const ChatRoom: React.FC = () => {
                   if (!u) return null;
                   return (
                     <div key={pid} className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 rounded-full text-xs">
-                      <img src={u.avatar} alt={u.name} className="w-4 h-4 rounded-full object-cover" />
+                      <img src={u.avatar || PRESET_AVATARS[0]} alt={u.name} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }} className="w-4 h-4 rounded-full object-cover" />
                       <span className="text-slate-200">{u.name}</span>
                       {u.id === activeChat.creatorId && (
                         <span className="text-[9px] text-emerald-400 font-bold ml-1">Создатель</span>
@@ -304,7 +300,7 @@ export const ChatRoom: React.FC = () => {
       )}
 
       {/* Messages Stream */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-3">
         {/* Date separator */}
         <div className="flex justify-center my-2">
           <span className="text-[11px] font-bold text-slate-400 bg-slate-900/90 px-3 py-1 rounded-full border border-slate-800 shadow-sm">
@@ -508,7 +504,7 @@ export const ChatRoom: React.FC = () => {
 
       {/* Replying banner */}
       {replyingTo && (
-        <div className="px-3 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
+        <div className="shrink-0 px-3 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2 border-l-2 border-emerald-400 pl-2">
             <div>
               <p className="text-[11px] font-bold text-emerald-400">
@@ -527,7 +523,7 @@ export const ChatRoom: React.FC = () => {
 
       {/* Preset Attach / Image Picker Drawer */}
       {showAttachMenu && (
-        <div className="p-3 bg-slate-900 border-t border-slate-800 space-y-3">
+        <div className="shrink-0 max-h-[30dvh] overflow-y-auto p-3 bg-slate-900 border-t border-slate-800 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-slate-300">Прикрепить фото или медиа:</p>
             <button onClick={() => setShowAttachMenu(false)} className="text-slate-400 hover:text-white">
@@ -583,7 +579,7 @@ export const ChatRoom: React.FC = () => {
 
       {/* Custom URL Image prompt */}
       {showImagePrompt && (
-        <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+        <div className="shrink-0 p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
           <input
             type="url"
             placeholder="Вставьте ссылку на изображение (https://...)"
@@ -609,7 +605,7 @@ export const ChatRoom: React.FC = () => {
 
       {/* Emoji picker drawer */}
       {showEmojiPicker && (
-        <div className="p-2.5 bg-slate-900 border-t border-slate-800 flex flex-wrap gap-2">
+        <div className="shrink-0 max-h-[24dvh] overflow-y-auto p-2.5 bg-slate-900 border-t border-slate-800 flex flex-wrap gap-2">
           {emojis.map((em) => (
             <button
               key={em}
@@ -624,10 +620,17 @@ export const ChatRoom: React.FC = () => {
         </div>
       )}
 
+      {messageError && (
+        <div role="alert" className="shrink-0 px-3 py-2 bg-rose-950/70 border-t border-rose-800 text-xs text-rose-200 flex items-center justify-between gap-2">
+          <span>{messageError}</span>
+          <button type="button" onClick={clearMessageError} className="text-rose-300 hover:text-white" aria-label="Закрыть сообщение об ошибке"><X size={15} /></button>
+        </div>
+      )}
+
       {/* Input Toolbar */}
       <form
         onSubmit={handleSend}
-        className="p-2.5 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md flex items-center gap-2 z-20 shrink-0"
+        className="sticky bottom-0 shrink-0 p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] border-t border-slate-800 bg-slate-900/95 backdrop-blur-md flex items-center gap-2 z-20"
       >
         <button
           type="button"
@@ -658,7 +661,7 @@ export const ChatRoom: React.FC = () => {
           placeholder="Сообщение..."
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          className="flex-1 bg-slate-800/90 border border-slate-700/80 rounded-2xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+          className="flex-1 min-w-0 bg-slate-800/90 border border-slate-700/80 rounded-2xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
         />
 
         {inputText.trim() ? (
