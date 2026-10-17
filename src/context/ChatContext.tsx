@@ -292,7 +292,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!currentUserId) return;
     const publishPresence = (online: boolean) => {
       const lastSeenAt = Date.now();
-      const presence = {
+      const presence: Pick<User, 'status' | 'lastSeen' | 'lastSeenAt'> = {
         status: online ? 'online' : 'offline',
         lastSeen: online ? 'в сети' : 'был(а) недавно',
         lastSeenAt,
