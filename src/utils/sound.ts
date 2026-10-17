@@ -7,7 +7,17 @@ class SoundEffects {
   private soundEnabled: boolean = true;
 
   constructor() {
-    // Lazily init AudioContext on user interaction
+    // Browsers require a real user gesture before audio can be played.
+    if (typeof window !== 'undefined') {
+      const unlock = () => {
+        const ctx = this.getContext();
+        if (ctx?.state === 'suspended') void ctx.resume().catch(() => {});
+        window.removeEventListener('pointerdown', unlock);
+        window.removeEventListener('keydown', unlock);
+      };
+      window.addEventListener('pointerdown', unlock, { once: true });
+      window.addEventListener('keydown', unlock, { once: true });
+    }
   }
 
   private getContext(): AudioContext | null {
