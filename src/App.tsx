@@ -4,11 +4,20 @@
  * отправкой изображений, поиском по нику и номеру, профилем и архитектурой Firebase.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ChatProvider } from './context/ChatContext';
 import { AndroidShell } from './components/layout/AndroidShell';
 
 export default function App() {
+  useEffect(() => {
+    try {
+      document.documentElement.dataset.theme =
+        localStorage.getItem('bratva-theme') === 'light-blue' ? 'light-blue' : 'dark-emerald';
+    } catch {
+      document.documentElement.dataset.theme = 'dark-emerald';
+    }
+  }, []);
+
   return (
     <ChatProvider>
       <AndroidShell />
