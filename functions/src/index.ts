@@ -36,7 +36,7 @@ async function enforceSearchLimit(uid: string) {
 }
 
 export const searchUserByEmail = onCall(
-  { region: "us-central1", enforceAppCheck: true },
+  { region: "us-central1" },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Войдите, чтобы искать пользователей.");
