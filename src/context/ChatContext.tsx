@@ -286,6 +286,42 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [currentUserId]);
 
 
+
+  // Keep the signed-in profile's presence fresh and expire it after a missed heartbeat.
+  useEffect(() => {
+    if (!currentUserId) return;
+    const publishPresence = (online: boolean) => {
+      const lastSeenAt = Date.now();
+      const presence = {
+        status: online ? 'online' : 'offline',
+        lastSeen: online ? 'в сети' : 'был(а) недавно',
+        lastSeenAt,
+      };
+      void Promise.all([
+        setDoc(doc(db, 'users', currentUserId), presence, { merge: true }),
+        setDoc(doc(db, 'publicProfiles', currentUserId), presence, { merge: true }),
+      ]).catch((error) => console.warn('Не удалось обновить статус присутствия:', error));
+      setAllUsers((previous) => previous.map((user) =>
+        user.id === currentUserId ? { ...user, ...presence } : user
+      ));
+    };
+    publishPresence(true);
+    const heartbeatId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') publishPresence(true);
+    }, 30_000);
+    const refresh = () => {
+      if (document.visibilityState === 'visible') publishPresence(true);
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(heartbeatId);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      publishPresence(false);
+    };
+  }, [currentUserId]);
+
   // Refresh peer profiles live so avatar/name changes propagate to chats and friends.
   const knownProfileIds = Array.from(new Set([
     ...allUsers.map((user) => user.id),
@@ -299,6 +335,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       (snapshot) => {
         if (!snapshot.exists()) return;
         const data = snapshot.data();
+        const lastSeenAt = typeof data.lastSeenAt === 'number' ? data.lastSeenAt : null;
+        const online = data.status === 'online' && lastSeenAt !== null && Date.now() - lastSeenAt < 120_000;
+        const lastSeen = online ? 'в сети' : lastSeenAt !== null
+          ? (Math.floor((Date.now() - lastSeenAt) / 60_000) < 2
+              ? 'был(а) недавно'
+              : `был(а) ${Math.floor((Date.now() - lastSeenAt) / 60_000)} мин. назад`)
+          : (typeof data.lastSeen === 'string' ? data.lastSeen : 'не в сети');
         setAllUsers((previous) => {
           const existing = previous.find((user) => user.id === userId);
           const profile: User = {
@@ -310,9 +353,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
             email: '',
             avatar: typeof data.avatar === 'string' ? data.avatar : existing?.avatar || '',
             bio: typeof data.bio === 'string' ? data.bio : existing?.bio || '',
-            status: data.status === 'online' ? 'online' : 'offline',
-            lastSeen: typeof data.lastSeen === 'string' ? data.lastSeen : existing?.lastSeen || 'не в сети',
-            ...(typeof data.lastSeenAt === 'number' ? { lastSeenAt: data.lastSeenAt } : {}),
+            status: online ? 'online' : 'offline',
+            lastSeen,
+            ...(lastSeenAt !== null ? { lastSeenAt } : {}),
             badge: typeof data.badge === 'string' ? data.badge : existing?.badge || '',
           };
           if (existing && existing.name === profile.name && existing.nickname === profile.nickname &&
