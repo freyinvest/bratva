@@ -245,7 +245,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     const publishPresence = (online: boolean) => {
       const now = Date.now();
       const lastSeen = online ? 'в сети' : 'был(а) недавно';
-      const presence = {
+      const presence: Pick<User, 'status' | 'lastSeen' | 'lastSeenAt'> = {
         status: online ? 'online' : 'offline',
         lastSeen,
         lastSeenAt: now,
