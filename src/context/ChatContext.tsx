@@ -741,7 +741,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         chat.participants.filter((participantId) => participantId && participantId !== sender.id).forEach((participantId) => {
           unreadUpdates[`unreadCounts.${participantId}`] = increment(1);
         });
-        await updateDoc(doc(db, 'chats', chatId), unreadUpdates);
+        try {
+          // Update unread counts before adding the message so an actively open recipient chat
+          // can immediately reset its own counter when the message snapshot arrives.
+          await updateDoc(doc(db, 'chats', chatId), unreadUpdates);
+        } catch (unreadError) {
+          console.warn('Не удалось обновить счётчик непрочитанных:', unreadError);
+        }
         await setDoc(doc(db, 'chats', chatId, 'messages', messageId), remoteMessage);
       } catch (error) {
         console.error('Не удалось сохранить сообщение в Firebase:', error);
