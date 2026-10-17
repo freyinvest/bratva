@@ -792,7 +792,7 @@ export const ChatRoom: React.FC = () => {
             type="button"
             onClick={() => void startOrStopVoiceRecording()}
             disabled={isSendingVoice}
-            className={\`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors shrink-0 disabled:opacity-50 \${isSendingVoice ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'}\`}
+            className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors shrink-0 disabled:opacity-50 ${isSendingVoice ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'}`}
             title={isSendingVoice ? 'Подготавливаем голосовое сообщение…' : 'Записать голосовое сообщение'}
             aria-label="Записать голосовое сообщение"
           >
