@@ -846,36 +846,129 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     console.warn('Используй регистрацию через Firebase.');
   };
 
-  const startCall = (targetUser: User, type: 'audio' | 'video') => {
-    sounds.playTap();
-
-    setCallState({
-      isActive: true,
-      type,
-      user: targetUser,
-      status: 'ringing',
-      isMuted: false,
-      isVideoOff: false,
-      durationSeconds: 0,
+  const prepareCallPeer = (callId: string, role: 'caller' | 'callee', stream: MediaStream) => {
+    const peer = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
     });
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = peer;
+    pendingIceCandidatesRef.current = [];
+    stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+    peer.ontrack = (event) => {
+      if (event.streams[0]) setRemoteCallStream(event.streams[0]);
+    };
+    peer.onicecandidate = (event) => {
+      if (!event.candidate) return;
+      const bucket = role === 'caller' ? 'callerCandidates' : 'calleeCandidates';
+      void addDoc(collection(db, 'calls', callId, bucket), event.candidate.toJSON())
+        .catch((error) => console.error('Не удалось отправить ICE-кандидат:', error));
+    };
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === 'connected') {
+        setCallError(null);
+        setCallState((current) => current?.callId === callId ? { ...current, status: 'connected' } : current);
+      } else if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
+        setCallError('Соединение нестабильно. Попробуйте перезвонить.');
+      }
+    };
+    setLocalCallStream(stream);
+    return peer;
+  };
 
-    setTimeout(() => {
-      setCallState((curr) => {
-        if (!curr || !curr.isActive) return null;
-        return { ...curr, status: 'connected' };
+  const startCall = async (targetUser: User, _type: 'audio' | 'video') => {
+    if (!currentUserId || !targetUser.id || targetUser.id === currentUserId || callState) return;
+    setCallError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCallError('Браузер не поддерживает доступ к микрофону. Откройте сайт по HTTPS.');
+      return;
+    }
+    const callId = 'call-' + currentUserId + '-' + Date.now();
+    const caller = allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      await setDoc(doc(db, 'calls', callId), {
+        callerId: currentUserId,
+        calleeId: targetUser.id,
+        callerName: caller.name || 'Пользователь',
+        callerNickname: caller.nickname || '',
+        callerAvatar: caller.avatar || '',
+        calleeName: targetUser.name || 'Пользователь',
+        calleeAvatar: targetUser.avatar || '',
+        type: 'audio',
+        status: 'ringing',
+        createdAt: serverTimestamp(),
       });
-    }, 2500);
+      prepareCallPeer(callId, 'caller', stream);
+      setCallState({
+        isActive: true,
+        callId,
+        direction: 'outgoing',
+        type: 'audio',
+        user: targetUser,
+        status: 'ringing',
+        isMuted: false,
+        isVideoOff: true,
+        durationSeconds: 0,
+      });
+    } catch (error) {
+      console.error('Не удалось начать аудиозвонок:', error);
+      setCallError('Не удалось включить микрофон или начать вызов. Разрешите доступ к микрофону и попробуйте ещё раз.');
+      setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+      await updateDoc(doc(db, 'calls', callId), { status: 'ended' }).catch(() => undefined);
+    }
+  };
+
+  const acceptCall = async () => {
+    const activeCall = callState;
+    if (!activeCall || activeCall.direction !== 'incoming') return;
+    setCallError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone is not supported');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      prepareCallPeer(activeCall.callId, 'callee', stream);
+      await updateDoc(doc(db, 'calls', activeCall.callId), { status: 'accepted' });
+      setCallState((current) => current?.callId === activeCall.callId
+        ? { ...current, status: 'connecting' } : current);
+    } catch (error) {
+      console.error('Не удалось ответить на звонок:', error);
+      setCallError('Не удалось включить микрофон. Разрешите доступ и попробуйте ответить ещё раз.');
+      setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+    }
+  };
+
+  const declineCall = () => {
+    const activeCall = callState;
+    if (activeCall) {
+      void updateDoc(doc(db, 'calls', activeCall.callId), { status: 'declined' })
+        .catch((error) => console.warn('Не удалось отклонить вызов:', error));
+    }
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+    setRemoteCallStream(null);
+    setCallState(null);
   };
 
   const endCall = () => {
-    sounds.playTap();
+    const activeCall = callState;
+    if (activeCall) {
+      void updateDoc(doc(db, 'calls', activeCall.callId), { status: 'ended' })
+        .catch((error) => console.warn('Не удалось завершить вызов:', error));
+    }
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+    setRemoteCallStream(null);
     setCallState(null);
   };
 
   const toggleCallMute = () => {
-    setCallState((curr) =>
-      curr ? { ...curr, isMuted: !curr.isMuted } : null
-    );
+    setCallState((current) => {
+      if (!current) return null;
+      const nextMuted = !current.isMuted;
+      localCallStream?.getAudioTracks().forEach((track) => { track.enabled = !nextMuted; });
+      return { ...current, isMuted: nextMuted };
+    });
   };
 
   const toggleCallVideo = () => {
