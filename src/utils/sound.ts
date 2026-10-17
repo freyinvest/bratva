@@ -68,21 +68,24 @@ class SoundEffects {
     try {
       const ctx = this.getContext();
       if (!ctx) return;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
 
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(750, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(1020, ctx.currentTime + 0.12);
+      // A softer, recognizable two-note chime instead of the old single rising beep.
+      const playNote = (frequency: number, startAt: number, duration: number, volume: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(frequency, startAt);
+        gain.gain.setValueAtTime(0.001, startAt);
+        gain.gain.linearRampToValueAtTime(volume, startAt + 0.018);
+        gain.gain.exponentialRampToValueAtTime(0.001, startAt + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startAt);
+        osc.stop(startAt + duration);
+      };
 
-      gain.gain.setValueAtTime(0.15, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start();
-      osc.stop(ctx.currentTime + 0.18);
+      playNote(784, ctx.currentTime, 0.16, 0.075);
+      playNote(988, ctx.currentTime + 0.105, 0.22, 0.065);
     } catch {
       // Ignore audio failure
     }
