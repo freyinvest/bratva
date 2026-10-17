@@ -262,7 +262,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         ));
       } else {
         setAllUsers((previous) => previous.map((user) =>
-          user.id === currentUserId && user.status !== 'online'
+          user.id === currentUserId && (user.status !== 'online' || user.lastSeen !== 'в сети')
             ? { ...user, ...presence }
             : user
         ));
