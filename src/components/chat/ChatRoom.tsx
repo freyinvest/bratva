@@ -46,6 +46,8 @@ export const ChatRoom: React.FC = () => {
   const [customImageUrl, setCustomImageUrl] = useState('');
   const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [showChatInfo, setShowChatInfo] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,14 +107,60 @@ export const ChatRoom: React.FC = () => {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        sendMessage(activeChat.id, undefined, base64);
-      };
-      reader.readAsDataURL(file);
+    e.target.value = '';
+    setUploadError('');
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Выбери файл изображения.');
+      return;
     }
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('Изображение должно быть не больше 10 МБ.');
+      return;
+    }
+
+    setIsUploadingImage(true);
+    const reader = new FileReader();
+    reader.onerror = () => {
+      setUploadError('Не удалось прочитать изображение. Попробуй ещё раз.');
+      setIsUploadingImage(false);
+    };
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        setUploadError('Не удалось прочитать изображение. Попробуй ещё раз.');
+        setIsUploadingImage(false);
+        return;
+      }
+      const image = new Image();
+      image.onerror = () => {
+        setUploadError('Файл не удалось открыть как изображение.');
+        setIsUploadingImage(false);
+      };
+      image.onload = () => {
+        try {
+          const maxDimension = 1280;
+          const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(image.width * scale));
+          canvas.height = Math.max(1, Math.round(image.height * scale));
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('Canvas недоступен');
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          // Compress photos before caching; large base64 payloads can exceed localStorage quota
+          // and crash the whole chat view.
+          const compressed = canvas.toDataURL('image/jpeg', 0.68);
+          sendMessage(activeChat.id, undefined, compressed);
+          setUploadError('');
+        } catch (error) {
+          console.error('Image processing failed:', error);
+          setUploadError('Не удалось подготовить изображение для отправки.');
+        } finally {
+          setIsUploadingImage(false);
+        }
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
   };
 
   const presetChatPhotos = [
@@ -521,6 +569,8 @@ export const ChatRoom: React.FC = () => {
             </button>
           </div>
 
+          {uploadError && <p role="alert" className="px-3 py-2 text-xs text-rose-300">{uploadError}</p>}
+          {isUploadingImage && <p role="status" className="px-3 py-2 text-xs text-emerald-300">Подготавливаем изображение…</p>}
           <input
             type="file"
             ref={fileInputRef}
