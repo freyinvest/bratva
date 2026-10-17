@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Phone,
-  Video,
   MoreVertical,
   Paperclip,
   Smile,
@@ -21,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { Message, User } from '../../types';
+import { PRESET_AVATARS } from '../../data/mockData';
 
 export const ChatRoom: React.FC = () => {
   const {
@@ -195,8 +195,9 @@ export const ChatRoom: React.FC = () => {
           >
             <div className="relative shrink-0">
               <img
-                src={activeChat.avatar}
+                src={(activeChat.type === 'direct' ? otherUser?.avatar : activeChat.avatar) || activeChat.avatar || PRESET_AVATARS[0]}
                 alt={activeChat.title}
+                onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                 className="w-10 h-10 rounded-2xl object-cover border border-slate-800 shadow-sm"
               />
               {activeChat.type === 'direct' && otherUser?.status === 'online' && (
@@ -233,13 +234,6 @@ export const ChatRoom: React.FC = () => {
                 title="Аудиозвонок"
               >
                 <Phone size={18} />
-              </button>
-              <button
-                onClick={() => startCall(otherUser, 'video')}
-                className="p-2 rounded-full hover:bg-slate-800 text-slate-300 hover:text-emerald-400 transition-colors"
-                title="Видеозвонок"
-              >
-                <Video size={18} />
               </button>
             </>
           )}
@@ -281,7 +275,7 @@ export const ChatRoom: React.FC = () => {
                   if (!u) return null;
                   return (
                     <div key={pid} className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 rounded-full text-xs">
-                      <img src={u.avatar} alt={u.name} className="w-4 h-4 rounded-full object-cover" />
+                      <img src={u.avatar || PRESET_AVATARS[0]} alt={u.name} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }} className="w-4 h-4 rounded-full object-cover" />
                       <span className="text-slate-200">{u.name}</span>
                       {u.id === activeChat.creatorId && (
                         <span className="text-[9px] text-emerald-400 font-bold ml-1">Создатель</span>
