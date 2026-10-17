@@ -328,7 +328,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       (snapshot) => {
         const incoming = snapshot.docs.find((item) => {
           const data = item.data();
-          return data.status === 'ringing' && item.id !== callState?.callId;
+          const createdAt = typeof data.createdAt?.toMillis === 'function' ? data.createdAt.toMillis() : 0;
+          return data.status === 'ringing' &&
+            item.id !== callState?.callId &&
+            createdAt > 0 &&
+            Date.now() - createdAt < 60_000;
         });
         if (!incoming || callState) return;
         const data = incoming.data();
