@@ -17,7 +17,7 @@ import {
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
 
 interface ChatContextType {
@@ -488,20 +488,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       throw new Error('Нельзя отправить заявку этому пользователю.');
     }
 
-    const targetUser = allUsers.find((user) => user.id === targetUserId);
-    if (!targetUser && !targetUserId) throw new Error('Пользователь не найден.');
-
-    const existing = query(
-      collection(db, 'friendRequests'),
-      where('fromUserId', '==', currentUserId),
-      where('toUserId', '==', targetUserId),
-    );
-    const existingSnapshot = await import('firebase/firestore').then(({ getDocs }) => getDocs(existing));
-    if (existingSnapshot.docs.some((item) => item.data().status === 'pending' || item.data().status === 'accepted')) {
-      return;
+    const requestId = currentUserId + '_' + targetUserId;
+    const requestRef = doc(db, 'friendRequests', requestId);
+    const existing = await getDoc(requestRef);
+    if (existing.exists()) {
+      const status = existing.data().status;
+      if (status === 'pending' || status === 'accepted') return;
     }
 
-    await addDoc(collection(db, 'friendRequests'), {
+    await setDoc(requestRef, {
       fromUserId: currentUserId,
       toUserId: targetUserId,
       status: 'pending',
