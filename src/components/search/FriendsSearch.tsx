@@ -237,7 +237,7 @@ export const FriendsSearch: React.FC = () => {
                   />
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-bold text-white truncate">{req.fromUser.name}</h4>
-                    <p className="text-xs text-slate-400 truncate">{req.fromUser.nickname} • {req.fromUser.phone}</p>
+                    <p className="text-xs text-slate-400 truncate">{req.fromUser.nickname}</p>
                     <p className="text-[11px] text-slate-500 mt-0.5">{req.fromUser.bio}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -369,7 +369,6 @@ export const FriendsSearch: React.FC = () => {
             />
             <h3 className="text-base font-black text-white">{currentUser.name}</h3>
             <p className="text-xs text-emerald-400 font-semibold">{currentUser.nickname}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{currentUser.phone}</p>
 
             {/* QR Mockup visual */}
             <div className="my-4 p-4 bg-white rounded-2xl inline-block shadow-lg">
