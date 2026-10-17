@@ -55,9 +55,10 @@ export const SettingsView: React.FC = () => {
       setPushBusy(false);
     }
   };
-  const [selectedTheme, setSelectedTheme] = useState<'dark-emerald' | 'light-blue'>(() => {
+  const [selectedTheme, setSelectedTheme] = useState<'dark-emerald' | 'neutral' | 'light-blue'>(() => {
     try {
-      return localStorage.getItem('bratva-theme') === 'light-blue' ? 'light-blue' : 'dark-emerald';
+      const saved = localStorage.getItem('bratva-theme');
+      return saved === 'light-blue' || saved === 'neutral' ? saved : 'dark-emerald';
     } catch {
       return 'dark-emerald';
     }
@@ -99,7 +100,7 @@ export const SettingsView: React.FC = () => {
             <Moon size={13} className="text-emerald-400" />
             Оформление интерфейса
           </h3>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               aria-pressed={selectedTheme === 'dark-emerald'}
@@ -127,6 +128,20 @@ export const SettingsView: React.FC = () => {
               </span>
               <span className={`block text-xs font-bold ${selectedTheme === 'light-blue' ? 'text-sky-950' : 'text-white'}`}>Светло-голубая</span>
               <span className={`block text-[10px] ${selectedTheme === 'light-blue' ? 'text-sky-800' : 'text-slate-400'}`}>Светлая тема</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={selectedTheme === 'neutral'}
+              onClick={() => setSelectedTheme('neutral')}
+              className={`rounded-2xl border p-3 text-left transition-colors ${
+                selectedTheme === 'neutral' ? 'border-slate-400 bg-slate-700' : 'border-slate-700 bg-slate-950/50'
+              }`}
+            >
+              <span className="mb-2 flex h-8 overflow-hidden rounded-lg border border-slate-600">
+                <span className="w-1/3 bg-slate-800" /><span className="w-1/3 bg-slate-700" /><span className="w-1/3 bg-slate-500" />
+              </span>
+              <span className="block text-xs font-bold text-white">Нейтральная</span>
+              <span className="block text-[10px] text-slate-400">Средние тона</span>
             </button>
           </div>
           <p className="text-[11px] text-slate-400">Выбор сохраняется на этом устройстве.</p>

@@ -12,7 +12,7 @@ export default function App() {
   useEffect(() => {
     try {
       document.documentElement.dataset.theme =
-        localStorage.getItem('bratva-theme') === 'light-blue' ? 'light-blue' : 'dark-emerald';
+        ['light-blue', 'neutral'].includes(localStorage.getItem('bratva-theme') || '') ? localStorage.getItem('bratva-theme')! : 'dark-emerald';
     } catch {
       document.documentElement.dataset.theme = 'dark-emerald';
     }

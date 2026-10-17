@@ -38,14 +38,13 @@ export const ProfileView: React.FC = () => {
   const [name, setName] = useState(currentUser.name);
   const [nickname, setNickname] = useState(currentUser.nickname);
   const [bio, setBio] = useState(currentUser.bio);
-  const [avatar, setAvatar] = useState(currentUser.avatar);
+  const [avatar, setAvatar] = useState(currentUser.avatar || '');
 
 useEffect(() => {
   setName(currentUser.name);
   setNickname(currentUser.nickname);
   setBio(currentUser.bio);
-  setAvatar(currentUser.avatar);
-  setBadge(currentUser.badge || 'Свой');
+  setAvatar(currentUser.avatar || '');
 }, [currentUser]);
   const [avatarError, setAvatarError] = useState('');
 
@@ -98,8 +97,6 @@ useEffect(() => {
     e.target.value = '';
   };
 
-  const [badge, setBadge] = useState(currentUser.badge || 'Свой');
-
   const totalPhotos = messages.filter(m => !!m.imageUrl).length;
   const friendsCount = allUsers.length - 1;
 
@@ -109,8 +106,7 @@ useEffect(() => {
       name,
       nickname: nickname.startsWith('@') ? nickname : `@${nickname}`,
       bio,
-      avatar,
-      badge
+      avatar
     });
     setIsEditing(false);
   };
@@ -133,8 +129,7 @@ useEffect(() => {
               setName(currentUser.name);
               setNickname(currentUser.nickname);
               setBio(currentUser.bio);
-              setAvatar(currentUser.avatar);
-              setBadge(currentUser.badge || 'Свой');
+              setAvatar(currentUser.avatar || '');
               setIsEditing(true);
             }}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors"
@@ -168,11 +163,6 @@ useEffect(() => {
 
           <div className="flex items-center gap-2">
             <h3 className="text-xl font-extrabold text-white tracking-tight">{currentUser.name}</h3>
-            {currentUser.badge && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">
-                {currentUser.badge}
-              </span>
-            )}
           </div>
 
           <p className="text-xs text-emerald-400 font-semibold mt-0.5">{currentUser.nickname}</p>
@@ -313,26 +303,40 @@ useEffect(() => {
     <p className="text-xs text-red-400 mb-2">{avatarError}</p>
   )}
   <div className="flex items-center gap-3 mb-3">
-    <img
-      src={avatar || PRESET_AVATARS[0]}
-      alt="Предпросмотр аватара"
-      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
-      className="w-14 h-14 rounded-xl object-cover border border-slate-700"
-    />
-    <p className="text-xs text-slate-400">Предпросмотр выбранной фотографии</p>
+    {avatar ? <img src={avatar} alt="Предпросмотр аватара" className="w-14 h-14 rounded-xl object-cover border border-slate-700" onError={() => setAvatarError('Не удалось загрузить выбранный аватар.')} /> : <div className="w-14 h-14 rounded-xl border border-dashed border-slate-600 flex items-center justify-center text-[10px] text-slate-500">Пусто</div>}
+    <p className="text-xs text-slate-400">Выбранный аватар всегда находится первым. Можно оставить поле пустым.</p>
   </div>
 
               <div className="grid grid-cols-6 gap-1.5 mb-2">
-                {PRESET_AVATARS.map((url, i) => (
-                  <div
-                    key={i}
-                    onClick={() => setAvatar(url)}
-                    className={`aspect-square rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${
-                      avatar === url ? 'border-emerald-500 scale-95' : 'border-transparent opacity-60 hover:opacity-100'
-                    }`}
+                {avatar ? (
+                  <button
+                    type="button"
+                    onClick={() => setAvatar(avatar)}
+                    aria-label="Текущий выбранный аватар"
+                    title="Выбранный аватар"
+                    className="aspect-square rounded-xl overflow-hidden border-2 border-emerald-500 scale-95"
                   >
-                    <img src={url} alt="preset" className="w-full h-full object-cover" />
-                  </div>
+                    <img src={avatar} alt="Выбранный аватар" className="w-full h-full object-cover" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setAvatar(''); setAvatarError(''); }}
+                    aria-label="Оставить без аватара"
+                    title="Без аватара"
+                    className="aspect-square rounded-xl overflow-hidden border-2 border-emerald-500 bg-slate-800 text-emerald-400 flex items-center justify-center text-[10px]"
+                  >Пусто</button>
+                )}
+                {PRESET_AVATARS.filter((url) => url !== avatar).map((url) => (
+                  <button
+                    type="button"
+                    key={url}
+                    onClick={() => setAvatar(url)}
+                    aria-label="Выбрать аватар"
+                    className="aspect-square rounded-xl overflow-hidden border-2 border-transparent opacity-70 hover:opacity-100 transition-all"
+                  >
+                    <img src={url} alt="Аватар" className="w-full h-full object-cover" />
+                  </button>
                 ))}
               </div>
               <input
