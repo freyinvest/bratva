@@ -16,7 +16,8 @@ import {
 import {
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
 
 interface ChatContextType {
@@ -59,7 +60,7 @@ interface ChatContextType {
     description?: string
   ) => string;
   startDirectChat: (targetUserId: string) => string;
-  addFriend: (targetUserId: string) => void;
+  addFriend: (targetUserId: string) => Promise<void>;
   acceptFriendRequest: (requestId: string) => void;
   declineFriendRequest: (requestId: string) => void;
   updateProfile: (updated: Partial<User>) => void;
@@ -216,6 +217,61 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
 
   const activeChat = chats.find((chat) => chat.id === activeChatId) || null;
+
+  // Keep incoming friend requests synced across signed-in devices.
+  useEffect(() => {
+    if (!currentUserId) {
+      setFriendRequests([]);
+      return;
+    }
+
+    const requestsQuery = query(
+      collection(db, 'friendRequests'),
+      where('toUserId', '==', currentUserId),
+    );
+    return onSnapshot(requestsQuery, async (snapshot) => {
+      const requests = await Promise.all(snapshot.docs.map(async (item) => {
+        const data = item.data();
+        const senderId = typeof data.fromUserId === 'string' ? data.fromUserId : '';
+        const localSender = allUsers.find((user) => user.id === senderId);
+        let sender = localSender;
+        if (!sender && senderId) {
+          try {
+            const profile = await getDoc(doc(db, 'publicProfiles', senderId));
+            if (profile.exists()) {
+              const value = profile.data();
+              sender = {
+                id: senderId,
+                name: typeof value.name === 'string' ? value.name : 'Пользователь',
+                nickname: typeof value.nickname === 'string' ? value.nickname : '',
+                phone: '',
+                email: '',
+                avatar: typeof value.avatar === 'string' ? value.avatar : '',
+                bio: typeof value.bio === 'string' ? value.bio : '',
+                status: value.status === 'online' ? 'online' as const : 'offline' as const,
+                lastSeen: typeof value.lastSeen === 'string' ? value.lastSeen : '',
+                badge: typeof value.badge === 'string' ? value.badge : '',
+              };
+            }
+          } catch (error) {
+            console.error('Could not load public sender profile:', error);
+          }
+        }
+        if (!sender) return null;
+        return {
+          id: item.id,
+          fromUser: sender,
+          toUserId: currentUserId,
+          createdAt: 'Заявка в сети',
+          status: data.status === 'accepted' || data.status === 'declined' ? data.status : 'pending',
+        } satisfies FriendRequest;
+      }));
+      setFriendRequests(requests.filter((request): request is FriendRequest => request !== null));
+    }, (error) => {
+      console.error('Friend request subscription failed:', error);
+    });
+  }, [currentUserId, allUsers]);
+
 
   const setSoundEnabled = (val: boolean) => {
     setSoundEnabledState(val);
@@ -427,43 +483,44 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     return newChatId;
   };
 
-  const addFriend = (targetUserId: string) => {
-    if (!currentUserId || targetUserId === currentUserId) return;
+  const addFriend = async (targetUserId: string): Promise<void> => {
+    if (!currentUserId || !targetUserId || targetUserId === currentUserId) {
+      throw new Error('Нельзя отправить заявку этому пользователю.');
+    }
 
     const targetUser = allUsers.find((user) => user.id === targetUserId);
-    if (!targetUser) return;
+    if (!targetUser && !targetUserId) throw new Error('Пользователь не найден.');
 
-    const newReq: FriendRequest = {
-      id: 'req-' + Date.now(),
-      fromUser: targetUser,
-      toUserId: currentUserId,
-      createdAt: 'Только что',
-      status: 'accepted',
-    };
+    const existing = query(
+      collection(db, 'friendRequests'),
+      where('fromUserId', '==', currentUserId),
+      where('toUserId', '==', targetUserId),
+    );
+    const existingSnapshot = await import('firebase/firestore').then(({ getDocs }) => getDocs(existing));
+    if (existingSnapshot.docs.some((item) => item.data().status === 'pending' || item.data().status === 'accepted')) {
+      return;
+    }
 
-    setFriendRequests((prev) => [newReq, ...prev]);
-    startDirectChat(targetUserId);
+    await addDoc(collection(db, 'friendRequests'), {
+      fromUserId: currentUserId,
+      toUserId: targetUserId,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
   };
 
   const acceptFriendRequest = (requestId: string) => {
     const req = friendRequests.find((request) => request.id === requestId);
-    if (!req) return;
-
-    setFriendRequests((prev) =>
-      prev.map((request) =>
-        request.id === requestId
-          ? { ...request, status: 'accepted' }
-          : request
-      )
-    );
-
-    startDirectChat(req.fromUser.id);
+    if (!req || !currentUserId) return;
+    void updateDoc(doc(db, 'friendRequests', requestId), { status: 'accepted' })
+      .then(() => startDirectChat(req.fromUser.id))
+      .catch((error) => console.error('Could not accept friend request:', error));
   };
 
   const declineFriendRequest = (requestId: string) => {
-    setFriendRequests((prev) =>
-      prev.filter((request) => request.id !== requestId)
-    );
+    if (!currentUserId) return;
+    void updateDoc(doc(db, 'friendRequests', requestId), { status: 'declined' })
+      .catch((error) => console.error('Could not decline friend request:', error));
   };
 
   const updateProfile = (updated: Partial<User>) => {
