@@ -50,7 +50,7 @@ export const AndroidShell: React.FC = () => {
   const pendingRequestsCount = friendRequests.filter(r => r.toUserId === currentUser.id && r.status === 'pending').length;
 
   return (
-    <div className="w-full h-full min-h-screen bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden select-none">
+    <div className="w-full h-full min-h-0 bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden select-none">
       {/* Background ambient lighting */}
       <div className="absolute -top-40 -left-40 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-teal-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -87,8 +87,8 @@ export const AndroidShell: React.FC = () => {
       <div
         className={`relative flex flex-col bg-slate-950 shadow-2xl transition-all duration-300 overflow-hidden ${
           deviceMode === 'frame'
-            ? 'w-full h-screen md:w-[412px] md:h-[870px] md:rounded-[48px] md:border-[10px] md:border-slate-800 md:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)]'
-            : 'w-full h-screen max-w-5xl md:border-x md:border-slate-800'
+            ? 'w-full h-[100dvh] min-h-0 md:w-[412px] md:h-[870px] md:rounded-[48px] md:border-[10px] md:border-slate-800 md:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)]'
+            : 'w-full h-[100dvh] min-h-0 max-w-5xl md:border-x md:border-slate-800'
         }`}
       >
         {/* Android Top Status Bar */}
