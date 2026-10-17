@@ -17,7 +17,7 @@ import {
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy, increment } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
 
 interface ChatContextType {
@@ -132,6 +132,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     return localStorage.getItem('bratva_current_user_id') || '';
   });
 
+  const [remoteChatIds, setRemoteChatIds] = useState<string[]>([]);
+
   const [chats, setChats] = useState<Chat[]>(() => {
     const userId = localStorage.getItem('bratva_current_user_id') || '';
     if (!userId) return [];
@@ -231,6 +233,80 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       console.warn('Не удалось сохранить сообщения в локальном кэше:', error);
     }
   }, [messages, currentUserId]);
+
+
+  // Sync shared conversations from Firestore so every participant sees the same chat list.
+  useEffect(() => {
+    if (!currentUserId) {
+      setRemoteChatIds([]);
+      return;
+    }
+    const sharedChatsQuery = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', currentUserId),
+    );
+    return onSnapshot(sharedChatsQuery, (snapshot) => {
+      const remoteChats = snapshot.docs.map((item) => {
+        const data = item.data();
+        return {
+          id: item.id,
+          type: data.type === 'group' ? 'group' as const : 'direct' as const,
+          title: typeof data.title === 'string' ? data.title : 'Чат',
+          avatar: typeof data.avatar === 'string' ? data.avatar : '',
+          participants: Array.isArray(data.participants) ? data.participants.filter((id): id is string => typeof id === 'string') : [],
+          unreadCount: typeof data.unreadCount === 'number' ? data.unreadCount : 0,
+          isPinned: Boolean(data.isPinned),
+          isMuted: Boolean(data.isMuted),
+          updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
+          creatorId: typeof data.creatorId === 'string' ? data.creatorId : undefined,
+          description: typeof data.description === 'string' ? data.description : undefined,
+          lastMessage: data.lastMessage && typeof data.lastMessage === 'object' ? data.lastMessage as Chat['lastMessage'] : undefined,
+        } satisfies Chat;
+      });
+      const ids = remoteChats.map((chat) => chat.id);
+      setRemoteChatIds(ids);
+      setChats((previous) => {
+        const localOnly = previous.filter((chat) => !ids.includes(chat.id));
+        return [...remoteChats, ...localOnly];
+      });
+    }, (error) => {
+      console.error('Не удалось синхронизировать чаты из Firebase:', error);
+    });
+  }, [currentUserId]);
+
+  // Subscribe to each shared conversation's message stream.
+  const remoteChatKey = remoteChatIds.slice().sort().join('|');
+  useEffect(() => {
+    if (!currentUserId || !remoteChatKey) return;
+    const ids = remoteChatKey.split('|');
+    const unsubscribers = ids.map((chatId) => onSnapshot(
+      query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc')),
+      (snapshot) => {
+        const remoteMessages: Message[] = snapshot.docs.map((item) => {
+          const data = item.data();
+          return {
+            id: item.id,
+            chatId,
+            senderId: typeof data.senderId === 'string' ? data.senderId : '',
+            text: typeof data.text === 'string' ? data.text : undefined,
+            imageUrl: typeof data.imageUrl === 'string' ? data.imageUrl : undefined,
+            voiceUrl: typeof data.voiceUrl === 'string' ? data.voiceUrl : undefined,
+            voiceDuration: typeof data.voiceDuration === 'number' ? data.voiceDuration : undefined,
+            timestamp: typeof data.timestamp === 'string' ? data.timestamp : '',
+            isRead: Boolean(data.isRead),
+            replyToMessage: data.replyToMessage as Message['replyToMessage'],
+            reactions: data.reactions && typeof data.reactions === 'object' ? data.reactions as Message['reactions'] : {},
+          };
+        });
+        setMessages((previous) => [
+          ...previous.filter((message) => message.chatId !== chatId),
+          ...remoteMessages,
+        ]);
+      },
+      (error) => console.error('Не удалось синхронизировать сообщения:', chatId, error),
+    ));
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [currentUserId, remoteChatKey]);
 
   const currentUser =
     allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
