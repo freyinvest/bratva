@@ -429,6 +429,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => { stopCall(); stopCandidates(); };
   }, [callState?.callId, callState?.direction]);
 
+
+  useEffect(() => {
+    if (!callState || callState.direction !== 'outgoing' || callState.status !== 'ringing') return;
+    const callId = callState.callId;
+    const timeout = window.setTimeout(() => {
+      void updateDoc(doc(db, 'calls', callId), { status: 'ended' }).catch(() => undefined);
+      setCallError('На звонок не ответили. Попробуйте ещё раз.');
+      setCallState((current) => current?.callId === callId ? null : current);
+      peerConnectionRef.current?.close();
+      peerConnectionRef.current = null;
+      setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+      setRemoteCallStream(null);
+    }, 45_000);
+    return () => window.clearTimeout(timeout);
+  }, [callState?.callId, callState?.direction, callState?.status]);
+
   const currentUser =
     allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
 
@@ -945,6 +961,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const declineCall = () => {
+    setCallError(null);
     const activeCall = callState;
     if (activeCall) {
       void updateDoc(doc(db, 'calls', activeCall.callId), { status: 'declined' })
@@ -958,6 +975,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const endCall = () => {
+    setCallError(null);
     const activeCall = callState;
     if (activeCall) {
       void updateDoc(doc(db, 'calls', activeCall.callId), { status: 'ended' })
