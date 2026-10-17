@@ -285,6 +285,50 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     });
   }, [currentUserId]);
 
+
+  // Refresh peer profiles live so avatar/name changes propagate to chats and friends.
+  const knownProfileIds = Array.from(new Set([
+    ...allUsers.map((user) => user.id),
+    ...chats.flatMap((chat) => chat.participants),
+  ])).filter((id) => id && id !== currentUserId).sort().join('|');
+
+  useEffect(() => {
+    if (!currentUserId || !knownProfileIds) return;
+    const unsubscribers = knownProfileIds.split('|').map((userId) => onSnapshot(
+      doc(db, 'publicProfiles', userId),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        const data = snapshot.data();
+        setAllUsers((previous) => {
+          const existing = previous.find((user) => user.id === userId);
+          const profile: User = {
+            ...(existing || EMPTY_USER),
+            id: userId,
+            name: typeof data.name === 'string' && data.name ? data.name : existing?.name || 'Пользователь',
+            nickname: typeof data.nickname === 'string' ? data.nickname : existing?.nickname || '',
+            phone: '',
+            email: '',
+            avatar: typeof data.avatar === 'string' ? data.avatar : existing?.avatar || '',
+            bio: typeof data.bio === 'string' ? data.bio : existing?.bio || '',
+            status: data.status === 'online' ? 'online' : 'offline',
+            lastSeen: typeof data.lastSeen === 'string' ? data.lastSeen : existing?.lastSeen || 'не в сети',
+            ...(typeof data.lastSeenAt === 'number' ? { lastSeenAt: data.lastSeenAt } : {}),
+            badge: typeof data.badge === 'string' ? data.badge : existing?.badge || '',
+          };
+          if (existing && existing.name === profile.name && existing.nickname === profile.nickname &&
+              existing.avatar === profile.avatar && existing.bio === profile.bio &&
+              existing.status === profile.status && existing.lastSeen === profile.lastSeen &&
+              existing.badge === profile.badge) return previous;
+          return existing
+            ? previous.map((user) => user.id === userId ? profile : user)
+            : [...previous, profile];
+        });
+      },
+      (error) => console.warn('Не удалось обновить профиль собеседника:', error),
+    ));
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [currentUserId, knownProfileIds]);
+
   // Subscribe to each shared conversation's message stream.
   const remoteChatKey = remoteChatIds.slice().sort().join('|');
   useEffect(() => {
