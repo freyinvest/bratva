@@ -14,7 +14,11 @@ import {
   Check,
   X,
   Users,
-  Info
+  Info,
+  FileText,
+  FileVideo,
+  FileAudio,
+  Download
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { Message, User } from '../../types';
@@ -117,12 +121,41 @@ export const ChatRoom: React.FC = () => {
     e.target.value = '';
     setUploadError('');
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setUploadError('Выбери файл изображения.');
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    const supportedMimeTypes = ['application/pdf', 'video/mp4', 'audio/wav', 'audio/x-wav', 'audio/wave', 'audio/mpeg', 'video/mpeg'];
+    const supportedExtensions = ['pdf', 'mp4', 'wav', 'mpeg', 'mpg', 'mp3'];
+    const isImage = file.type.startsWith('image/');
+    const isDocumentOrMedia = supportedMimeTypes.includes(file.type.toLowerCase()) || supportedExtensions.includes(extension);
+    if (!isImage && !isDocumentOrMedia) {
+      setUploadError('Поддерживаются изображения, PDF, MP4, WAV и MPEG.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError('Изображение должно быть не больше 10 МБ.');
+    // Firestore documents are limited to 1 MiB; base64 grows files by roughly a third.
+    const maxBytes = isImage ? 10 * 1024 * 1024 : 500 * 1024;
+    if (file.size > maxBytes) {
+      setUploadError(isImage ? 'Изображение должно быть не больше 10 МБ.' : 'Документ или медиафайл должен быть не больше 500 КБ.');
+      return;
+    }
+    if (!isImage) {
+      setIsUploadingImage(true);
+      const reader = new FileReader();
+      reader.onerror = () => {
+        setUploadError('Не удалось прочитать файл. Попробуй ещё раз.');
+        setIsUploadingImage(false);
+      };
+      reader.onload = () => {
+        if (typeof reader.result !== 'string') {
+          setUploadError('Не удалось прочитать файл. Попробуй ещё раз.');
+          setIsUploadingImage(false);
+          return;
+        }
+        const type = file.type || (extension === 'pdf' ? 'application/pdf' : extension === 'mp4' ? 'video/mp4' : extension === 'wav' ? 'audio/wav' : extension === 'mp3' ? 'audio/mpeg' : extension === 'mpeg' || extension === 'mpg' ? 'video/mpeg' : 'application/octet-stream');
+        sendMessage(activeChat.id, undefined, undefined, undefined, undefined, undefined, { url: reader.result, name: file.name, type });
+        setUploadError('');
+        setShowAttachMenu(false);
+        setIsUploadingImage(false);
+      };
+      reader.readAsDataURL(file);
       return;
     }
 
@@ -270,13 +303,6 @@ export const ChatRoom: React.FC = () => {
     audioStreamRef.current = null;
     if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
   }, []);
-
-  const presetChatPhotos = [
-    'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80',
-    'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=800&q=80',
-    'https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?auto=format&fit=crop&w=800&q=80',
-    'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=800&q=80',
-  ];
 
   const emojis = ['😀', '🔥', '🤝', '👍', '🥊', '💪', '🚀', '❤️', '😂', '💯', '👑', '😎', '⚡', '💣'];
 
@@ -464,6 +490,25 @@ export const ChatRoom: React.FC = () => {
                     </div>
                   )}
 
+                  {msg.attachmentUrl && (
+                    <div className="mb-2 min-w-[200px] max-w-[280px] rounded-xl border border-slate-600/70 bg-slate-900/40 p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        {msg.attachmentType?.includes('pdf') ? <FileText size={22} className="shrink-0 text-rose-300" /> :
+                          msg.attachmentType?.startsWith('video/') ? <FileVideo size={22} className="shrink-0 text-sky-300" /> :
+                          <FileAudio size={22} className="shrink-0 text-emerald-300" />}
+                        <span className="text-xs font-medium break-all">{msg.attachmentName || 'Вложенный файл'}</span>
+                      </div>
+                      {msg.attachmentType?.startsWith('video/') ? (
+                        <video controls preload="metadata" src={msg.attachmentUrl} className="w-full max-h-40 rounded-lg" />
+                      ) : msg.attachmentType?.startsWith('audio/') ? (
+                        <audio controls preload="metadata" src={msg.attachmentUrl} className="w-full h-9" />
+                      ) : null}
+                      <a href={msg.attachmentUrl} download={msg.attachmentName || 'attachment'} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-2 text-xs font-semibold text-emerald-300 hover:text-emerald-200">
+                        <Download size={14} /> Открыть / скачать
+                      </a>
+                    </div>
+                  )}
+
                   {/* Real, playable voice message */}
                   {msg.voiceUrl ? (
                     <div className="min-w-[220px] max-w-full py-1">
@@ -630,28 +675,13 @@ export const ChatRoom: React.FC = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-4 gap-2">
-            {presetChatPhotos.map((url, i) => (
-              <div
-                key={i}
-                onClick={() => {
-                  sendMessage(activeChat.id, undefined, url);
-                  setShowAttachMenu(false);
-                }}
-                className="aspect-square rounded-xl overflow-hidden cursor-pointer hover:opacity-80 transition-opacity border border-slate-700"
-              >
-                <img src={url} alt="Preset" className="w-full h-full object-cover" />
-              </div>
-            ))}
-          </div>
-
           <div className="flex gap-2">
             <button
               onClick={() => fileInputRef.current?.click()}
               className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 flex items-center justify-center gap-1.5"
             >
               <ImageIcon size={15} />
-              Выбрать с устройства
+              Выбрать фото или файл
             </button>
             <button
               onClick={() => {
@@ -665,12 +695,12 @@ export const ChatRoom: React.FC = () => {
           </div>
 
           {uploadError && <p role="alert" className="px-3 py-2 text-xs text-rose-300">{uploadError}</p>}
-          {isUploadingImage && <p role="status" className="px-3 py-2 text-xs text-emerald-300">Подготавливаем изображение…</p>}
+          {isUploadingImage && <p role="status" className="px-3 py-2 text-xs text-emerald-300">Подготавливаем вложение…</p>}
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileUpload}
-            accept="image/*"
+            accept="image/*,.pdf,.mp4,.wav,.mpeg,.mpg,.mp3,application/pdf,video/mp4,audio/wav,audio/x-wav,audio/mpeg,video/mpeg"
             className="hidden"
           />
         </div>

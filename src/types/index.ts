@@ -28,6 +28,9 @@ export interface Message {
   imageUrl?: string;
   voiceUrl?: string;
   voiceDuration?: number; // seconds
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentType?: string;
   timestamp: string;
   isRead: boolean;
   replyToMessage?: {
