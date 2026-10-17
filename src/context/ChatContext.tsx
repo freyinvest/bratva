@@ -144,6 +144,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   });
 
+  // Hiding a chat is a per-user preference. Keep the underlying chat and
+  // messages intact so hiding it never acts like deleting the conversation.
+  const [hiddenChatIdsByUser, setHiddenChatIdsByUser] = useState<Record<string, string[]>>(() => {
+    try {
+      const saved = localStorage.getItem('bratva_hidden_chats_by_user');
+      const parsed = saved ? JSON.parse(saved) : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+
   const [messages, setMessages] = useState<Message[]>(() => {
     try {
       const saved = localStorage.getItem('bratva_messages');
@@ -201,6 +213,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [chats]);
 
   useEffect(() => {
+    localStorage.setItem('bratva_hidden_chats_by_user', JSON.stringify(hiddenChatIdsByUser));
+  }, [hiddenChatIdsByUser]);
+
+  useEffect(() => {
     localStorage.setItem('bratva_messages', JSON.stringify(messages));
   }, [messages]);
 
@@ -215,7 +231,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const currentUser =
     allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
 
-  const activeChat = chats.find((chat) => chat.id === activeChatId) || null;
+  const hiddenChatIds = currentUserId ? hiddenChatIdsByUser[currentUserId] || [] : [];
+  const visibleChats = chats.filter((chat) => !hiddenChatIds.includes(chat.id));
+  const activeChat = visibleChats.find((chat) => chat.id === activeChatId) || null;
 
   const setSoundEnabled = (val: boolean) => {
     setSoundEnabledState(val);
@@ -385,6 +403,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     );
 
     if (existing) {
+      // Choosing this contact again is an explicit request to reopen the chat.
+      if ((hiddenChatIdsByUser[currentUserId] || []).includes(existing.id)) {
+        setHiddenChatIdsByUser((prev) => ({
+          ...prev,
+          [currentUserId]: (prev[currentUserId] || []).filter((id) => id !== existing.id),
+        }));
+      }
       setActiveChatId(existing.id);
       setActiveTab('chats');
       return existing.id;
@@ -412,12 +437,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       unreadCount: 0,
       isPinned: false,
       updatedAt: timeStr,
-      lastMessage: {
-        text: 'Диалог начат',
-        timestamp: timeStr,
-        senderId: creator.id,
-        isRead: true,
-      },
+      // A new chat has no message yet. The list preview is populated by sendMessage.
     };
 
     setChats((prev) => [newChat, ...prev]);
@@ -583,8 +603,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const deleteChat = (chatId: string) => {
-    setChats((prev) => prev.filter((chat) => chat.id !== chatId));
-    setMessages((prev) => prev.filter((message) => message.chatId !== chatId));
+    if (!currentUserId) return;
+
+    // Persist a user-specific hidden marker instead of deleting shared chat data.
+    setHiddenChatIdsByUser((prev) => {
+      const current = prev[currentUserId] || [];
+      if (current.includes(chatId)) return prev;
+      return { ...prev, [currentUserId]: [...current, chatId] };
+    });
 
     if (activeChatId === chatId) {
       setActiveChatId(null);
@@ -597,7 +623,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         currentUser,
         allUsers,
-        chats,
+        chats: visibleChats,
         messages,
         friendRequests,
         activeChatId,

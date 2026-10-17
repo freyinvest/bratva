@@ -247,7 +247,7 @@ export const ChatList: React.FC = () => {
                       <span className="font-semibold text-slate-400">
                         {chat.type === 'group' && getSenderName(chat.lastMessage?.senderId)}
                       </span>
-                      <span>{chat.lastMessage?.text || 'Нет сообщений'}</span>
+                      <span>{chat.lastMessage?.text && chat.lastMessage.text !== 'Диалог начат' ? chat.lastMessage.text : 'Пока нет сообщений'}</span>
                     </p>
 
                     {chat.unreadCount > 0 && (

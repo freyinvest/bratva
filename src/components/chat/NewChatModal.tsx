@@ -28,6 +28,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
   const filteredFriends = friends.filter(u =>
     u.name.toLowerCase().includes(search.toLowerCase()) ||
     u.nickname.toLowerCase().includes(search.toLowerCase()) ||
+    (u.email || '').toLowerCase().includes(search.trim().toLowerCase()) ||
     u.phone.includes(search)
   );
 
@@ -113,7 +114,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
               <input
                 type="text"
-                placeholder="Поиск по имени, нику или телефону..."
+                placeholder="Поиск по имени, нику, email или телефону..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"

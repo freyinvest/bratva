@@ -42,6 +42,7 @@ export const FriendsSearch: React.FC = () => {
     return (
       u.name.toLowerCase().includes(cleanQuery) ||
       u.nickname.toLowerCase().includes(cleanQuery) ||
+      (u.email || '').toLowerCase().includes(q.trim().toLowerCase()) ||
       cleanPhone.includes(cleanQuery)
     );
   };
@@ -83,7 +84,7 @@ export const FriendsSearch: React.FC = () => {
       <div className="p-4 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-black tracking-tight text-white">Друзья & Поиск</h2>
-          <p className="text-xs text-slate-400">Поиск по никнейму (@...) или номеру телефона</p>
+          <p className="text-xs text-slate-400">Поиск по имени, никнейму или email</p>
         </div>
         <button
           onClick={() => setShowQrModal(true)}
