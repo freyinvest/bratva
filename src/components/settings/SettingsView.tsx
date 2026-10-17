@@ -129,7 +129,6 @@ export const SettingsView: React.FC = () => {
               <span className={`block text-xs font-bold ${selectedTheme === 'light-blue' ? 'text-sky-950' : 'text-white'}`}>Светло-голубая</span>
               <span className={`block text-[10px] ${selectedTheme === 'light-blue' ? 'text-sky-800' : 'text-slate-400'}`}>Светлая тема</span>
             </button>
-          </div>
             <button
               type="button"
               aria-pressed={selectedTheme === 'neutral'}
@@ -144,6 +143,7 @@ export const SettingsView: React.FC = () => {
               <span className="block text-xs font-bold text-white">Нейтральная</span>
               <span className="block text-[10px] text-slate-400">Средние тона</span>
             </button>
+          </div>
           <p className="text-[11px] text-slate-400">Выбор сохраняется на этом устройстве.</p>
         </div>
 
