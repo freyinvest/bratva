@@ -302,7 +302,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
           description: typeof data.description === 'string' ? data.description : undefined,
           lastMessage: data.lastMessage && typeof data.lastMessage === 'object' ? data.lastMessage as Chat['lastMessage'] : undefined,
         } satisfies Chat;
-      });
+      }).filter((chat) => chat.type !== 'direct' || !chat.participants.some((participantId) => participantId !== currentUserId && contactRelations[participantId] === 'blocked'));
       const ids = remoteChats.map((chat) => chat.id);
       setRemoteChatIds(ids);
       setChats((previous) => {
@@ -312,7 +312,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     }, (error) => {
       console.error('Не удалось синхронизировать чаты из Firebase:', error);
     });
-  }, [currentUserId]);
+  }, [currentUserId, contactRelations]);
 
 
 
@@ -964,6 +964,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!currentUserId || !targetUser.id || targetUser.id === currentUserId) return;
     const relationId = currentUserId + '_' + targetUser.id;
     setContactRelations((previous) => ({ ...previous, [targetUser.id]: status }));
+    setAllUsers((previous) => previous.some((user) => user.id === targetUser.id) ? previous : [...previous, targetUser]);
     await setDoc(doc(db, 'userContacts', relationId), {
       ownerId: currentUserId,
       contactId: targetUser.id,
@@ -1029,7 +1030,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         bio: updatedUser.bio || '',
         status: updatedUser.status || 'offline',
         lastSeen: updatedUser.lastSeen || '',
-        badge: updatedUser.badge || 'Свой',
       }, { merge: true }),
     ]).catch((error) => {
       console.error('Не удалось сохранить профиль для друзей:', error);
