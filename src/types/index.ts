@@ -10,6 +10,7 @@ export interface User {
   bio: string;
   status: UserStatus;
   lastSeen?: string;
+  lastSeenAt?: number;
   badge?: string;   // e.g. 'Основатель', 'Свой', 'Брат', 'Авторитет'
 }
 
@@ -71,9 +72,11 @@ export type AppTab = 'chats' | 'friends' | 'calls' | 'profile' | 'settings';
 
 export interface CallState {
   isActive: boolean;
+  callId: string;
+  direction: 'incoming' | 'outgoing';
   type: 'audio' | 'video';
   user: User;
-  status: 'ringing' | 'connected' | 'ended';
+  status: 'ringing' | 'connecting' | 'connected' | 'ended';
   isMuted: boolean;
   isVideoOff: boolean;
   durationSeconds: number;
