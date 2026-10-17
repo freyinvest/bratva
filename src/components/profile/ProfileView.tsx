@@ -43,7 +43,7 @@ useEffect(() => {
   setNickname(currentUser.nickname);
   setBio(currentUser.bio);
   setAvatar(currentUser.avatar);
-  setBadge(currentUser.badge);
+  setBadge(currentUser.badge || 'Свой');
 }, [currentUser]);
   const [avatarError, setAvatarError] = useState('');
 
