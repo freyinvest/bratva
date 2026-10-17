@@ -196,7 +196,7 @@ export const ChatRoom: React.FC = () => {
             <div className="relative shrink-0">
               <img
                 src={(activeChat.type === 'direct' ? otherUser?.avatar : activeChat.avatar) || activeChat.avatar || PRESET_AVATARS[0]}
-                alt={activeChat.title}
+                alt={activeChat.type === 'direct' ? otherUser?.name || activeChat.title : activeChat.title}
                 onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                 className="w-10 h-10 rounded-2xl object-cover border border-slate-800 shadow-sm"
               />
@@ -207,7 +207,7 @@ export const ChatRoom: React.FC = () => {
 
             <div className="min-w-0">
               <h2 className="font-bold text-sm text-slate-100 group-hover:text-emerald-400 transition-colors truncate">
-                {activeChat.title}
+                {activeChat.type === 'direct' ? otherUser?.name || activeChat.title : activeChat.title}
               </h2>
               <p className="text-[11px] text-slate-400 truncate">
                 {isOtherTyping ? (
