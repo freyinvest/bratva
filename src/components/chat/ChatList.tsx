@@ -226,7 +226,7 @@ export const ChatList: React.FC = () => {
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <h3 className="font-bold text-sm text-slate-100 truncate group-hover:text-emerald-400 transition-colors">
-                        {chat.title}
+                        {chat.type === 'direct' ? peerUser?.name || chat.title : chat.title}
                       </h3>
                       {chat.isMuted && <VolumeX size={13} className="text-slate-500 shrink-0" />}
                     </div>
