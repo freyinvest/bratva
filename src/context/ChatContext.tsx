@@ -1013,6 +1013,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!existingUser) return;
 
     const updatedUser = { ...existingUser, ...updated };
+    delete updatedUser.badge;
     setAllUsers((prev) =>
       prev.map((user) => user.id === currentUserId ? updatedUser : user)
     );
