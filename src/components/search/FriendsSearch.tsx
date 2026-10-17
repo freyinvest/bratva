@@ -132,7 +132,7 @@ export const FriendsSearch: React.FC = () => {
   const myFriends = allUsers.filter(u => u.id !== currentUser.id && contactRelations[u.id] !== 'removed' && contactRelations[u.id] !== 'blocked');
   const blockedUsers = [...allUsers, ...networkUsers].filter((user, index, users) => user.id !== currentUser.id && contactRelations[user.id] === 'blocked' && users.findIndex((item) => item.id === user.id) === index);
   const displayedUsers = activeTab === 'global'
-    ? networkUsers
+    ? networkUsers.filter((user) => contactRelations[user.id] !== 'blocked')
     : myFriends.filter((u) => {
         const term = searchQuery.trim().replace(/^@+/, '').toLowerCase();
         return !term || u.nickname.toLowerCase().replace(/^@+/, '').includes(term) ||
@@ -341,7 +341,7 @@ export const FriendsSearch: React.FC = () => {
                     >
                       <MessageSquare size={16} />
                     </button>}
-                    {activeTab !== 'blocked' && (
+                    {true && (
                       <>
                         <button
                           type="button"
@@ -363,7 +363,7 @@ export const FriendsSearch: React.FC = () => {
                         ><Ban size={15}/></button>
                       </>
                     )}
-                    {!sentRequestIds.has(user.id) && activeTab !== 'blocked' && (
+                    {!sentRequestIds.has(user.id) && (
                       <button
                         onClick={async () => {
                           if (sendingTo) return;
