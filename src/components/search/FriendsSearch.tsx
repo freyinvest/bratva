@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import {
   Search,
   UserPlus,
@@ -32,26 +34,80 @@ export const FriendsSearch: React.FC = () => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [quickPhoneInput, setQuickPhoneInput] = useState('');
   const [phoneAddStatus, setPhoneAddStatus] = useState<string | null>(null);
+  const [networkUsers, setNetworkUsers] = useState<User[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [sendingTo, setSendingTo] = useState<string | null>(null);
 
   const pendingRequests = friendRequests.filter(r => r.toUserId === currentUser.id && r.status === 'pending');
 
-  // Filtered users
-  const isQueryMatching = (u: User, q: string) => {
-    const cleanQuery = q.toLowerCase().replace(/[\s\-\(\)]/g, '');
-    const cleanPhone = u.phone.replace(/[\s\-\(\)]/g, '');
-    return (
-      u.name.toLowerCase().includes(cleanQuery) ||
-      u.nickname.toLowerCase().includes(cleanQuery) ||
-      cleanPhone.includes(cleanQuery)
-    );
-  };
+  // Network search reads only the deliberately public profile collection.
+  // Phone numbers are never queried or matched.
+  useEffect(() => {
+    const term = searchQuery.trim().replace(/^@+/, '').toLowerCase();
+    if (activeTab !== 'global' || term.length < 2) {
+      setNetworkUsers([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearchLoading(true);
+    setSearchError(null);
+    const timer = window.setTimeout(async () => {
+      try {
+        const usersQuery = query(
+          collection(db, 'publicProfiles'),
+          where('nicknameLower', '>=', term),
+          where('nicknameLower', '<=', term + '\uf8ff'),
+          limit(20),
+        );
+        const snapshot = await getDocs(usersQuery);
+        if (cancelled) return;
+        const found = snapshot.docs
+          .map((item) => {
+            const data = item.data();
+            return {
+              id: item.id,
+              name: typeof data.name === 'string' ? data.name : 'Пользователь',
+              nickname: typeof data.nickname === 'string' ? data.nickname : '',
+              phone: '',
+              email: '',
+              avatar: typeof data.avatar === 'string' ? data.avatar : '',
+              bio: typeof data.bio === 'string' ? data.bio : '',
+              status: data.status === 'online' ? 'online' as const : 'offline' as const,
+              lastSeen: typeof data.lastSeen === 'string' ? data.lastSeen : '',
+              badge: typeof data.badge === 'string' ? data.badge : '',
+            } satisfies User;
+          })
+          .filter((user) => user.id !== currentUser.id);
+        setNetworkUsers(found);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Firestore nickname search failed:', error);
+          setSearchError('Не удалось выполнить поиск. Проверь подключение и правила Firestore.');
+          setNetworkUsers([]);
+        }
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeTab, searchQuery, currentUser.id]);
 
   const myFriends = allUsers.filter(u => u.id !== currentUser.id);
-
-  const displayedUsers = myFriends.filter(u => {
-    if (!searchQuery.trim()) return true;
-    return isQueryMatching(u, searchQuery);
-  });
+  const displayedUsers = activeTab === 'global'
+    ? networkUsers
+    : myFriends.filter((u) => {
+        const term = searchQuery.trim().replace(/^@+/, '').toLowerCase();
+        return !term || u.nickname.toLowerCase().replace(/^@+/, '').includes(term) ||
+          u.name.toLowerCase().includes(term);
+      });
 
   const handleCopyProfile = () => {
     navigator.clipboard?.writeText?.(`bratva://user/${currentUser.nickname}`);
@@ -83,7 +139,7 @@ export const FriendsSearch: React.FC = () => {
       <div className="p-4 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-black tracking-tight text-white">Друзья & Поиск</h2>
-          <p className="text-xs text-slate-400">Поиск по никнейму (@...) или номеру телефона</p>
+          <p className="text-xs text-slate-400">Поиск пользователей по никнейму (@...)</p>
         </div>
         <button
           onClick={() => setShowQrModal(true)}
@@ -100,7 +156,7 @@ export const FriendsSearch: React.FC = () => {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
           <input
             type="text"
-            placeholder="Введите @ник (например @kosmos) или +7 999..."
+            placeholder="Введите никнейм (например @kosmos)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
@@ -153,38 +209,6 @@ export const FriendsSearch: React.FC = () => {
             )}
           </button>
         </div>
-
-        {/* Quick add by phone widget */}
-        <form
-          onSubmit={handleQuickAddByPhone}
-          className="p-3 bg-gradient-to-r from-slate-900 to-slate-900/60 rounded-2xl border border-slate-800 space-y-2"
-        >
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
-            <Phone size={14} className="text-emerald-400" />
-            Быстрое добавление по номеру телефона:
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="tel"
-              placeholder="+7 (999) 000-00-00"
-              value={quickPhoneInput}
-              onChange={(e) => setQuickPhoneInput(e.target.value)}
-              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
-            />
-            <button
-              type="submit"
-              disabled={!quickPhoneInput.trim()}
-              className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs disabled:opacity-50 transition-colors shadow-sm"
-            >
-              Найти
-            </button>
-          </div>
-          {phoneAddStatus && (
-            <p className="text-[11px] text-emerald-400 font-medium animate-fadeIn">
-              {phoneAddStatus}
-            </p>
-          )}
-        </form>
 
         {/* Tab content */}
         {activeTab === 'requests' ? (
@@ -241,11 +265,17 @@ export const FriendsSearch: React.FC = () => {
               </h3>
             </div>
 
-            {displayedUsers.length === 0 ? (
+            {activeTab === 'global' && searchQuery.trim().replace(/^@+/, '').length < 2 ? (
+              <div className="py-10 text-center text-slate-500 text-xs">Введи минимум 2 символа никнейма для поиска</div>
+            ) : searchLoading ? (
+              <div className="py-10 text-center text-slate-400 text-xs">Ищем пользователей…</div>
+            ) : searchError ? (
+              <div role="alert" className="py-8 text-center text-amber-300 text-xs">{searchError}</div>
+            ) : displayedUsers.length === 0 ? (
               <div className="py-12 text-center text-slate-500 space-y-2">
                 <Search size={32} className="mx-auto text-slate-600" />
                 <p className="text-xs">Пользователь не найден</p>
-                <p className="text-[11px] text-slate-600">Проверьте правильность никнейма или телефона</p>
+                <p className="text-[11px] text-slate-600">Проверь правильность никнейма</p>
               </div>
             ) : (
               displayedUsers.map((user) => (
@@ -275,9 +305,7 @@ export const FriendsSearch: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 truncate">
-                      {user.nickname} • {user.phone}
-                    </p>
+                    <p className="text-xs text-slate-400 truncate">{user.nickname}</p>
                     <p className="text-[11px] text-slate-500 truncate mt-0.5">
                       {user.bio}
                     </p>
@@ -292,11 +320,17 @@ export const FriendsSearch: React.FC = () => {
                       <MessageSquare size={16} />
                     </button>
                     <button
-                      onClick={() => addFriend(user.id)}
-                      className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-                      title="Добавить"
+                      onClick={async () => {
+                        if (sendingTo) return;
+                        setSendingTo(user.id);
+                        try { await addFriend(user.id); }
+                        finally { setSendingTo(null); }
+                      }}
+                      disabled={sendingTo === user.id}
+                      className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-50"
+                      title="Отправить заявку в друзья"
                     >
-                      <UserPlus size={16} />
+                      {sendingTo === user.id ? <span className="text-[10px]">…</span> : <UserPlus size={16} />}
                     </button>
                   </div>
                 </div>
