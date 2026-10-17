@@ -233,7 +233,6 @@ export const FriendsSearch: React.FC = () => {
                       <X size={16} />
                     </button>
                   </div>
-                  {actionMessage?.id === user.id && <p role="status" className="basis-full text-[11px] text-emerald-400 mt-1">{actionMessage.text}</p>}
                 </div>
               ))
             )}
@@ -318,6 +317,7 @@ export const FriendsSearch: React.FC = () => {
                       {sendingTo === user.id ? <span className="text-[10px]">…</span> : <UserPlus size={16} />}
                     </button>
                   </div>
+                  {actionMessage?.id === user.id && <p role="status" className="basis-full text-[11px] text-emerald-400 mt-1">{actionMessage.text}</p>}
                 </div>
               ))
             )}
