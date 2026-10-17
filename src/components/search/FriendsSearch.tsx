@@ -11,7 +11,10 @@ import {
   Shield,
   Sparkles,
   Share2,
-  Copy
+  Copy,
+  UserMinus,
+  Ban,
+  RotateCcw
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { User } from '../../types';
@@ -25,11 +28,15 @@ export const FriendsSearch: React.FC = () => {
     addFriend,
     friendRequests,
     acceptFriendRequest,
-    declineFriendRequest
+    declineFriendRequest,
+    contactRelations,
+    removeContact,
+    blockContact,
+    unblockContact
   } = useChat();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'my' | 'global' | 'requests'>('my');
+  const [activeTab, setActiveTab] = useState<'my' | 'global' | 'requests' | 'blocked'>('my');
   const [showQrModal, setShowQrModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [networkUsers, setNetworkUsers] = useState<User[]>([]);
@@ -122,7 +129,8 @@ export const FriendsSearch: React.FC = () => {
     };
   }, [activeTab, searchQuery, currentUser.id]);
 
-  const myFriends = allUsers.filter(u => u.id !== currentUser.id);
+  const myFriends = allUsers.filter(u => u.id !== currentUser.id && contactRelations[u.id] !== 'removed' && contactRelations[u.id] !== 'blocked');
+  const blockedUsers = [...allUsers, ...networkUsers].filter((user, index, users) => user.id !== currentUser.id && contactRelations[user.id] === 'blocked' && users.findIndex((item) => item.id === user.id) === index);
   const displayedUsers = activeTab === 'global'
     ? networkUsers
     : myFriends.filter((u) => {
@@ -176,7 +184,7 @@ export const FriendsSearch: React.FC = () => {
         </div>
 
         {/* Tab switcher */}
-        <div className="grid grid-cols-3 p-1 bg-slate-900 rounded-2xl border border-slate-800/80">
+        <div className="grid grid-cols-4 p-1 bg-slate-900 rounded-2xl border border-slate-800/80">
           <button
             onClick={() => setActiveTab('my')}
             className={`py-2 text-xs font-bold rounded-xl transition-all ${
@@ -212,10 +220,23 @@ export const FriendsSearch: React.FC = () => {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setActiveTab('blocked')}
+            className={`py-2 text-xs font-bold rounded-xl transition-all ${
+              activeTab === 'blocked' ? 'bg-slate-800 text-rose-300 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Блок ({blockedUsers.length})
+          </button>
         </div>
 
         {/* Tab content */}
-        {activeTab === 'requests' ? (
+        {activeTab === 'blocked' ? (
+          <div className="space-y-2 pt-1">
+            <h3 className="text-xs font-bold text-slate-400 px-1">Заблокированные пользователи</h3>
+            {blockedUsers.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">Список блокировки пуст.</p> : blockedUsers.map((user) => <div key={user.id} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between gap-3"><div className="flex items-center gap-3 min-w-0"><img src={user.avatar || PRESET_AVATARS[0]} alt="" className="w-10 h-10 rounded-xl object-cover"/><div className="min-w-0"><p className="text-sm font-bold text-white truncate">{user.name}</p><p className="text-xs text-slate-400 truncate">{user.nickname}</p></div></div><button type="button" onClick={() => unblockContact(user.id)} className="px-3 py-2 rounded-xl bg-slate-800 text-xs text-emerald-400 font-bold flex items-center gap-1"><RotateCcw size={14}/> Разблокировать</button></div>)}
+          </div>
+        ) : activeTab === 'requests' ? (
           <div className="space-y-2 pt-1">
             <h3 className="text-xs font-bold text-slate-400 px-1">
               Входящие приглашения ({pendingRequests.length})
@@ -305,11 +326,6 @@ export const FriendsSearch: React.FC = () => {
                       <h4 className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors truncate">
                         {user.name}
                       </h4>
-                      {user.badge && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-800 text-emerald-400 border border-emerald-500/20 font-semibold">
-                          {user.badge}
-                        </span>
-                      )}
                     </div>
                     <p className="text-xs text-slate-400 truncate">{user.nickname}</p>
                     <p className="text-[11px] text-slate-500 truncate mt-0.5">
@@ -318,14 +334,36 @@ export const FriendsSearch: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <button
+                    {contactRelations[user.id] !== 'blocked' && <button
                       onClick={() => startDirectChat(user.id, user)}
                       className="p-2.5 rounded-xl bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-slate-700 hover:border-emerald-500 transition-all shadow-sm"
                       title="Написать"
                     >
                       <MessageSquare size={16} />
-                    </button>
-                    {!sentRequestIds.has(user.id) && (
+                    </button>}
+                    {activeTab !== 'blocked' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Удалить ${user.name} из контактов?`)) void removeContact(user);
+                          }}
+                          className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-amber-300 transition-colors"
+                          title="Удалить контакт"
+                          aria-label="Удалить контакт"
+                        ><UserMinus size={15}/></button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Заблокировать ${user.name}? Он исчезнет из списка, и чат с ним нельзя будет открыть.`)) void blockContact(user);
+                          }}
+                          className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors"
+                          title="Заблокировать контакт"
+                          aria-label="Заблокировать контакт"
+                        ><Ban size={15}/></button>
+                      </>
+                    )}
+                    {!sentRequestIds.has(user.id) && activeTab !== 'blocked' && (
                       <button
                         onClick={async () => {
                           if (sendingTo) return;
