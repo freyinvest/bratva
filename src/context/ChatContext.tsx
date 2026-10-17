@@ -306,7 +306,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       const ids = remoteChats.map((chat) => chat.id);
       setRemoteChatIds(ids);
       setChats((previous) => {
-        const localOnly = previous.filter((chat) => !ids.includes(chat.id));
+        const localOnly = previous.filter((chat) => !ids.includes(chat.id) && !(chat.type === 'direct' && chat.participants.some((participantId) => participantId !== currentUserId && contactRelations[participantId] === 'blocked')));
         return [...remoteChats, ...localOnly];
       });
     }, (error) => {
