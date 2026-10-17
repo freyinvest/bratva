@@ -16,7 +16,6 @@ import { ChatRoom } from '../chat/ChatRoom';
 import { FriendsSearch } from '../search/FriendsSearch';
 import { ProfileView } from '../profile/ProfileView';
 import { SettingsView } from '../settings/SettingsView';
-import { StoryViewerModal } from '../stories/StoriesBar';
 import { CallOverlay } from '../call/CallOverlay';
 import { ImageLightbox } from '../media/ImageLightbox';
 import { AuthModal } from '../auth/AuthModal';
@@ -29,8 +28,6 @@ export const AndroidShell: React.FC = () => {
     chats,
     friendRequests,
     currentUser,
-    viewingStory,
-    setViewingStory,
     deviceMode,
     setDeviceMode
   } = useChat();
@@ -229,12 +226,6 @@ export const AndroidShell: React.FC = () => {
         </div>
 
         {/* Overlays */}
-        {viewingStory && (
-          <StoryViewerModal
-            story={viewingStory}
-            onClose={() => setViewingStory(null)}
-          />
-        )}
         <CallOverlay />
         <ImageLightbox />
         <AuthModal />
