@@ -10,6 +10,7 @@ export interface User {
   bio: string;
   status: UserStatus;
   lastSeen?: string;
+  lastSeenAt?: number;
   badge?: string;   // e.g. 'Основатель', 'Свой', 'Брат', 'Авторитет'
 }
 

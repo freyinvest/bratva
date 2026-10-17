@@ -173,13 +173,13 @@ export const ChatRoom: React.FC = () => {
   const emojis = ['😀', '🔥', '🤝', '👍', '🥊', '💪', '🚀', '❤️', '😂', '💯', '👑', '😎', '⚡', '💣'];
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-100 relative">
+    <div className="flex flex-col h-full min-h-0 bg-slate-950 text-slate-100 relative">
    
  
 
     {/* Chat Room Top Bar */}
   {/* Chat Room Top Bar */}
-      <div className="p-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-md flex items-center justify-between z-20">
+      <div className="p-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-md flex items-center justify-between z-20 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={() => setActiveChatId(null)}
@@ -304,7 +304,7 @@ export const ChatRoom: React.FC = () => {
       )}
 
       {/* Messages Stream */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-3">
         {/* Date separator */}
         <div className="flex justify-center my-2">
           <span className="text-[11px] font-bold text-slate-400 bg-slate-900/90 px-3 py-1 rounded-full border border-slate-800 shadow-sm">
@@ -508,7 +508,7 @@ export const ChatRoom: React.FC = () => {
 
       {/* Replying banner */}
       {replyingTo && (
-        <div className="px-3 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
+        <div className="shrink-0 px-3 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2 border-l-2 border-emerald-400 pl-2">
             <div>
               <p className="text-[11px] font-bold text-emerald-400">
@@ -527,7 +527,7 @@ export const ChatRoom: React.FC = () => {
 
       {/* Preset Attach / Image Picker Drawer */}
       {showAttachMenu && (
-        <div className="p-3 bg-slate-900 border-t border-slate-800 space-y-3">
+        <div className="shrink-0 max-h-[30dvh] overflow-y-auto p-3 bg-slate-900 border-t border-slate-800 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-slate-300">Прикрепить фото или медиа:</p>
             <button onClick={() => setShowAttachMenu(false)} className="text-slate-400 hover:text-white">
@@ -583,7 +583,7 @@ export const ChatRoom: React.FC = () => {
 
       {/* Custom URL Image prompt */}
       {showImagePrompt && (
-        <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+        <div className="shrink-0 p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
           <input
             type="url"
             placeholder="Вставьте ссылку на изображение (https://...)"
@@ -609,7 +609,7 @@ export const ChatRoom: React.FC = () => {
 
       {/* Emoji picker drawer */}
       {showEmojiPicker && (
-        <div className="p-2.5 bg-slate-900 border-t border-slate-800 flex flex-wrap gap-2">
+        <div className="shrink-0 max-h-[24dvh] overflow-y-auto p-2.5 bg-slate-900 border-t border-slate-800 flex flex-wrap gap-2">
           {emojis.map((em) => (
             <button
               key={em}
@@ -627,7 +627,7 @@ export const ChatRoom: React.FC = () => {
       {/* Input Toolbar */}
       <form
         onSubmit={handleSend}
-        className="p-2.5 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md flex items-center gap-2 z-20 shrink-0"
+        className="sticky bottom-0 shrink-0 p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] border-t border-slate-800 bg-slate-900/95 backdrop-blur-md flex items-center gap-2 z-20"
       >
         <button
           type="button"
@@ -658,7 +658,7 @@ export const ChatRoom: React.FC = () => {
           placeholder="Сообщение..."
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          className="flex-1 bg-slate-800/90 border border-slate-700/80 rounded-2xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+          className="flex-1 min-w-0 bg-slate-800/90 border border-slate-700/80 rounded-2xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
         />
 
         {inputText.trim() ? (

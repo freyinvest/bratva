@@ -237,6 +237,100 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const activeChat = chats.find((chat) => chat.id === activeChatId) || null;
 
+  // Publish a short-lived heartbeat so stale "online" flags expire after a closed tab
+  // or a lost connection. Other clients subscribe to each known public profile below.
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const publishPresence = (online: boolean) => {
+      const now = Date.now();
+      const lastSeen = online ? 'в сети' : 'был(а) недавно';
+      const presence: Pick<User, 'status' | 'lastSeen' | 'lastSeenAt'> = {
+        status: online ? 'online' : 'offline',
+        lastSeen,
+        lastSeenAt: now,
+      };
+      void Promise.all([
+        setDoc(doc(db, 'users', currentUserId), presence, { merge: true }),
+        setDoc(doc(db, 'publicProfiles', currentUserId), presence, { merge: true }),
+      ]).catch((error) => {
+        console.warn('Не удалось обновить статус присутствия:', error);
+      });
+      if (!online) {
+        setAllUsers((previous) => previous.map((user) =>
+          user.id === currentUserId ? { ...user, ...presence } : user
+        ));
+      } else {
+        setAllUsers((previous) => previous.map((user) =>
+          user.id === currentUserId && (user.status !== 'online' || user.lastSeen !== 'в сети')
+            ? { ...user, ...presence }
+            : user
+        ));
+      }
+    };
+
+    publishPresence(true);
+    const heartbeat = window.setInterval(() => {
+      if (document.visibilityState === 'visible') publishPresence(true);
+    }, 30_000);
+    const refreshOnFocus = () => {
+      if (document.visibilityState === 'visible') publishPresence(true);
+    };
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshOnFocus);
+
+    return () => {
+      window.clearInterval(heartbeat);
+      window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshOnFocus);
+      publishPresence(false);
+    };
+  }, [currentUserId]);
+
+  // Keep friend/contact presence live across accounts and mark old heartbeats offline.
+  const knownOtherUserIds = allUsers
+    .filter((user) => user.id && user.id !== currentUserId)
+    .map((user) => user.id)
+    .join('|');
+
+  useEffect(() => {
+    if (!currentUserId || !knownOtherUserIds) return;
+    const ids = knownOtherUserIds.split('|');
+    const unsubscribe = ids.map((userId) => onSnapshot(
+      doc(db, 'publicProfiles', userId),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        const data = snapshot.data();
+        const lastSeenAt = typeof data.lastSeenAt === 'number' ? data.lastSeenAt : null;
+        const online = data.status === 'online' && lastSeenAt !== null &&
+          Date.now() - lastSeenAt < 120_000;
+        let lastSeen = 'не в сети';
+        if (online) {
+          lastSeen = 'в сети';
+        } else if (lastSeenAt !== null) {
+          const minutes = Math.max(1, Math.floor((Date.now() - lastSeenAt) / 60_000));
+          lastSeen = minutes < 2 ? 'был(а) недавно'
+            : minutes < 60 ? `был(а) ${minutes} мин. назад`
+            : `был(а) ${Math.floor(minutes / 60)} ч. назад`;
+        } else if (typeof data.lastSeen === 'string' && data.lastSeen !== 'в сети') {
+          lastSeen = data.lastSeen || 'не в сети';
+        }
+        setAllUsers((previous) => {
+          const existing = previous.find((user) => user.id === userId);
+          if (!existing || (existing.status === (online ? 'online' : 'offline') &&
+              existing.lastSeen === lastSeen)) return previous;
+          return previous.map((user) => user.id === userId
+            ? { ...user, status: online ? 'online' : 'offline', lastSeen,
+                ...(lastSeenAt !== null ? { lastSeenAt } : {}) }
+            : user
+          );
+        });
+      },
+      (error) => console.warn('Не удалось обновить статус контакта:', error),
+    ));
+    return () => unsubscribe.forEach((stop) => stop());
+  }, [currentUserId, knownOtherUserIds]);
+
   // Keep incoming friend requests synced across signed-in devices.
   useEffect(() => {
     if (!currentUserId) {
