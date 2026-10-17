@@ -13,7 +13,6 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
-import { StoriesBar } from '../stories/StoriesBar';
 import { NewChatModal } from './NewChatModal';
 
 export const ChatList: React.FC = () => {
@@ -116,8 +115,6 @@ export const ChatList: React.FC = () => {
         </button>
       </div>
 
-      {/* Stories / Statuses Carousel */}
-      <StoriesBar />
 
       {/* Search Input Bar */}
       <div className="px-3 pt-2.5 pb-1">

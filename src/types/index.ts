@@ -59,17 +59,6 @@ export interface Chat {
   description?: string;
 }
 
-export interface Story {
-  id: string;
-  userId: string;
-  userName: string;
-  userAvatar: string;
-  mediaUrl: string;
-  caption?: string;
-  timestamp: string;
-  isViewed: boolean;
-}
-
 export interface FriendRequest {
   id: string;
   fromUser: User;

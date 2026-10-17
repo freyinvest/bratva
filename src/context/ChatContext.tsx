@@ -9,7 +9,6 @@ import {
   User,
   Chat,
   Message,
-  Story,
   FriendRequest,
   AppTab,
   CallState,
@@ -25,13 +24,11 @@ interface ChatContextType {
   allUsers: User[];
   chats: Chat[];
   messages: Message[];
-  stories: Story[];
   friendRequests: FriendRequest[];
   activeChatId: string | null;
   activeChat: Chat | null;
   activeTab: AppTab;
   callState: CallState | null;
-  viewingStory: Story | null;
   previewImage: string | null;
   chatFilter: 'all' | 'direct' | 'groups' | 'unread';
   isTypingUserId: string | null;
@@ -42,7 +39,6 @@ interface ChatContextType {
   setActiveTab: (tab: AppTab) => void;
   setActiveChatId: (id: string | null) => void;
   setChatFilter: (filter: 'all' | 'direct' | 'groups' | 'unread') => void;
-  setViewingStory: (story: Story | null) => void;
   setPreviewImage: (url: string | null) => void;
   setDeviceMode: (mode: 'frame' | 'fullscreen') => void;
   setSoundEnabled: (enabled: boolean) => void;
@@ -86,7 +82,6 @@ interface ChatContextType {
   muteChat: (chatId: string) => void;
   deleteChat: (chatId: string) => void;
   markChatAsRead: (chatId: string) => void;
-  addStory: (mediaUrl: string, caption?: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -158,14 +153,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   });
 
-  const [stories, setStories] = useState<Story[]>(() => {
-    try {
-      const saved = localStorage.getItem('bratva_stories');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
 
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>(() => {
     try {
@@ -179,7 +166,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('chats');
   const [callState, setCallState] = useState<CallState | null>(null);
-  const [viewingStory, setViewingStory] = useState<Story | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [chatFilter, setChatFilter] = useState<
     'all' | 'direct' | 'groups' | 'unread'
@@ -193,6 +179,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(
     () => !localStorage.getItem('bratva_current_user_id')
   );
+
+  useEffect(() => {
+    localStorage.removeItem('bratva_stories');
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('bratva_users', JSON.stringify(allUsers));
@@ -214,9 +204,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.setItem('bratva_messages', JSON.stringify(messages));
   }, [messages]);
 
-  useEffect(() => {
-    localStorage.setItem('bratva_stories', JSON.stringify(stories));
-  }, [stories]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -604,25 +591,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const addStory = (mediaUrl: string, caption?: string) => {
-    if (!currentUserId) return;
-
-    const author = allUsers.find((user) => user.id === currentUserId);
-    if (!author) return;
-
-    const newStory: Story = {
-      id: 'story-' + Date.now(),
-      userId: author.id,
-      userName: author.name.split(' ')[0],
-      userAvatar: author.avatar,
-      mediaUrl,
-      caption,
-      timestamp: 'Только что',
-      isViewed: true,
-    };
-
-    setStories((prev) => [newStory, ...prev]);
-  };
 
   return (
     <ChatContext.Provider
@@ -631,13 +599,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         allUsers,
         chats,
         messages,
-        stories,
         friendRequests,
         activeChatId,
         activeChat,
         activeTab,
         callState,
-        viewingStory,
         previewImage,
         chatFilter,
         isTypingUserId,
@@ -647,7 +613,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         setActiveTab,
         setActiveChatId,
         setChatFilter,
-        setViewingStory,
         setPreviewImage,
         setDeviceMode,
         setSoundEnabled,
@@ -673,7 +638,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         muteChat,
         deleteChat,
         markChatAsRead,
-        addStory,
       }}
     >
       {children}

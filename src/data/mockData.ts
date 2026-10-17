@@ -1,4 +1,4 @@
-import { User, Chat, Message, Story, FriendRequest } from '../types';
+import { User, Chat, Message, FriendRequest } from '../types';
 
 export const INITIAL_USERS: User[] = [
   {
@@ -293,49 +293,6 @@ export const INITIAL_MESSAGES: Message[] = [
     text: 'В 18:00 тренировка, спарринги по боксу, жду тебя.',
     timestamp: '11:15',
     isRead: true
-  }
-];
-
-export const INITIAL_STORIES: Story[] = [
-  {
-    id: 'story-1',
-    userId: 'user-kosmos',
-    userName: 'Космос',
-    userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-    mediaUrl: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80',
-    caption: 'Ночной выезд по проспекту 🏎️💨',
-    timestamp: '20 мин назад',
-    isViewed: false
-  },
-  {
-    id: 'story-2',
-    userId: 'user-fil',
-    userName: 'Фил',
-    userAvatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&q=80',
-    mediaUrl: 'https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?auto=format&fit=crop&w=800&q=80',
-    caption: 'Утренняя разминка. Дисциплина решает 🥊',
-    timestamp: '1 час назад',
-    isViewed: false
-  },
-  {
-    id: 'story-3',
-    userId: 'user-pchela',
-    userName: 'Пчёла',
-    userAvatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=400&q=80',
-    mediaUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80',
-    caption: 'Переговоры в Сити. Всё по плану 💼',
-    timestamp: '3 часа назад',
-    isViewed: true
-  },
-  {
-    id: 'story-4',
-    userId: 'user-olga',
-    userName: 'Ольга',
-    userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-    mediaUrl: 'https://images.unsplash.com/photo-1511192336575-5a79af67a629?auto=format&fit=crop&w=800&q=80',
-    caption: 'Репетиция в филармонии 🎻',
-    timestamp: '5 часов назад',
-    isViewed: true
   }
 ];
 
