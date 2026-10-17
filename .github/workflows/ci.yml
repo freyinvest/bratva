@@ -17,7 +17,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
         working-directory: functions
       - run: npm run build
         working-directory: functions
