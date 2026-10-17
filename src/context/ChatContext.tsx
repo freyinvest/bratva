@@ -63,7 +63,7 @@ interface ChatContextType {
     avatar?: string,
     description?: string
   ) => string;
-  startDirectChat: (targetUserId: string) => string;
+  startDirectChat: (targetUserId: string, targetProfile?: User) => string;
   addFriend: (targetUserId: string) => Promise<void>;
   acceptFriendRequest: (requestId: string) => void;
   declineFriendRequest: (requestId: string) => void;
@@ -668,12 +668,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     return newChatId;
   };
 
-  const startDirectChat = (targetUserId: string): string => {
+  const startDirectChat = (targetUserId: string, targetProfile?: User): string => {
     if (!currentUserId || !targetUserId || targetUserId === currentUserId) return '';
 
-    const targetUser = allUsers.find((user) => user.id === targetUserId);
+    const targetUser = allUsers.find((user) => user.id === targetUserId) || targetProfile;
     const creator = allUsers.find((user) => user.id === currentUserId);
     if (!targetUser || !creator) return '';
+    setAllUsers((previous) => previous.some((user) => user.id === targetUser.id) ? previous : [...previous, targetUser]);
 
     // A stable ID makes both accounts open the exact same direct conversation.
     const sharedChatId = 'direct-' + [currentUserId, targetUserId].sort().join('-');
@@ -1021,6 +1022,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         activeChat,
         activeTab,
         callState,
+        localCallStream,
+        remoteCallStream,
+        callError,
         previewImage,
         chatFilter,
         isTypingUserId,
@@ -1048,6 +1052,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         setAuthenticatedUser,
         registerUser,
         startCall,
+        acceptCall,
+        declineCall,
         endCall,
         toggleCallMute,
         toggleCallVideo,
