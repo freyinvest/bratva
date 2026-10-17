@@ -13,8 +13,6 @@ import {
   CheckCheck,
   Check,
   X,
-  Play,
-  Pause,
   Users,
   Info
 } from 'lucide-react';
@@ -44,7 +42,6 @@ export const ChatRoom: React.FC = () => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [customImageUrl, setCustomImageUrl] = useState('');
   const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [showChatInfo, setShowChatInfo] = useState(false);
@@ -54,6 +51,7 @@ export const ChatRoom: React.FC = () => {
   const [isSendingVoice, setIsSendingVoice] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
   const recordingStartedAtRef = useRef(0);
   const recordingTimerRef = useRef<number | null>(null);
@@ -185,6 +183,7 @@ export const ChatRoom: React.FC = () => {
     setUploadError('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
       const supportedTypes = [
         'audio/webm;codecs=opus',
         'audio/webm',
@@ -211,6 +210,7 @@ export const ChatRoom: React.FC = () => {
       };
       recorder.onstop = () => {
         stream.getTracks().forEach(track => track.stop());
+        audioStreamRef.current = null;
         if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
         recordingTimerRef.current = null;
         setIsRecordingVoice(false);
@@ -266,7 +266,8 @@ export const ChatRoom: React.FC = () => {
 
   useEffect(() => () => {
     if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
-    mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
+    audioStreamRef.current?.getTracks().forEach(track => track.stop());
+    audioStreamRef.current = null;
     if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
   }, []);
 
