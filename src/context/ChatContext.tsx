@@ -543,11 +543,32 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const updateProfile = (updated: Partial<User>) => {
     if (!currentUserId) return;
 
+    const existingUser = allUsers.find((user) => user.id === currentUserId);
+    if (!existingUser) return;
+
+    const updatedUser = { ...existingUser, ...updated };
     setAllUsers((prev) =>
-      prev.map((user) =>
-        user.id === currentUserId ? { ...user, ...updated } : user
-      )
+      prev.map((user) => user.id === currentUserId ? updatedUser : user)
     );
+
+    // Keep the private profile and the public directory in sync so friends
+    // see the same saved avatar as the chat header after a profile edit.
+    void Promise.all([
+      setDoc(doc(db, 'users', currentUserId), updatedUser, { merge: true }),
+      setDoc(doc(db, 'publicProfiles', currentUserId), {
+        id: currentUserId,
+        name: updatedUser.name,
+        nickname: updatedUser.nickname,
+        nicknameLower: updatedUser.nickname.replace(/^@+/, '').toLowerCase(),
+        avatar: updatedUser.avatar || '',
+        bio: updatedUser.bio || '',
+        status: updatedUser.status || 'offline',
+        lastSeen: updatedUser.lastSeen || '',
+        badge: updatedUser.badge || 'Свой',
+      }, { merge: true }),
+    ]).catch((error) => {
+      console.error('Не удалось сохранить профиль для друзей:', error);
+    });
   };
 
   // Демо-вход отключён.
