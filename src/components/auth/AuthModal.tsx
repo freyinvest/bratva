@@ -3,6 +3,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  sendEmailVerification,
+  signOut,
 } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
@@ -29,6 +31,7 @@ export const AuthModal: React.FC = () => {
   const [nickname, setNickname] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(PRESET_AVATARS[0]);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   if (!isAuthModalOpen) return null;
@@ -67,6 +70,7 @@ export const AuthModal: React.FC = () => {
   const handleEmailAuth = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMessage('');
+    setSuccessMessage('');
     setIsLoading(true);
 
     try {
@@ -109,23 +113,34 @@ export const AuthModal: React.FC = () => {
 
         await setDoc(doc(db, 'users', credential.user.uid), profile);
         await setDoc(doc(db, 'publicProfiles', credential.user.uid), {
-  id: credential.user.uid,
-  name: profile.name,
-  nickname: profile.nickname,
-  avatar: profile.avatar,
-  bio: profile.bio,
-  status: profile.status,
-  lastSeen: profile.lastSeen,
-  badge: profile.badge,
-});
-        setAuthenticatedUser(profile);
-        setIsAuthModalOpen(false);
+          id: credential.user.uid,
+          name: profile.name,
+          nickname: profile.nickname,
+          nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
+          avatar: profile.avatar,
+          bio: profile.bio,
+          status: profile.status,
+          lastSeen: profile.lastSeen,
+          badge: profile.badge,
+        });
+
+        await sendEmailVerification(credential.user);
+        await signOut(auth);
+        setAuthMode('login');
+        setSuccessMessage('Аккаунт создан. Мы отправили письмо для подтверждения адреса. Перейди по ссылке в письме, затем войди. Проверь папку «Спам», если письма нет во входящих.');
       } else {
         const credential = await signInWithEmailAndPassword(
           auth,
           cleanEmail,
           password,
         );
+
+        if (!credential.user.emailVerified) {
+          await sendEmailVerification(credential.user);
+          await signOut(auth);
+          setSuccessMessage('Адрес электронной почты ещё не подтверждён. Мы отправили новое письмо. Подтверди адрес и попробуй войти снова.');
+          return;
+        }
 
         const profileSnapshot = await getDoc(
           doc(db, 'users', credential.user.uid),
@@ -144,6 +159,7 @@ await setDoc(doc(db, 'publicProfiles', credential.user.uid), {
   id: credential.user.uid,
   name: profile.name,
   nickname: profile.nickname,
+  nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
   avatar: profile.avatar,
   bio: profile.bio || '',
   status: profile.status || 'offline',
@@ -198,7 +214,7 @@ setAuthenticatedUser(profile);
           <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
             <button
               type="button"
-              onClick={() => { setAuthMode('login'); setErrorMessage(''); }}
+              onClick={() => { setAuthMode('login'); setErrorMessage(''); setSuccessMessage(''); }}
               className={`py-2 text-xs font-bold rounded-xl transition-all ${
                 authMode === 'login' ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
@@ -207,7 +223,7 @@ setAuthenticatedUser(profile);
             </button>
             <button
               type="button"
-              onClick={() => { setAuthMode('register'); setErrorMessage(''); }}
+              onClick={() => { setAuthMode('register'); setErrorMessage(''); setSuccessMessage(''); }}
               className={`py-2 text-xs font-bold rounded-xl transition-all ${
                 authMode === 'register' ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
@@ -219,6 +235,11 @@ setAuthenticatedUser(profile);
           {errorMessage && (
             <div role="alert" className="rounded-xl border border-red-500/40 bg-red-950/40 px-3 py-2 text-xs text-red-200">
               {errorMessage}
+            </div>
+          )}
+          {successMessage && (
+            <div role="status" className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-200">
+              {successMessage}
             </div>
           )}
 

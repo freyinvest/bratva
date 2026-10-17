@@ -1,12 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   MessageSquare,
   Users,
   User as UserIcon,
   Settings,
-  Wifi,
-  Battery,
-  Signal,
   Maximize2,
   Smartphone
 } from 'lucide-react';
@@ -32,25 +29,11 @@ export const AndroidShell: React.FC = () => {
     setDeviceMode
   } = useChat();
 
-  const [currentTime, setCurrentTime] = useState('');
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      const h = String(now.getHours()).padStart(2, '0');
-      const m = String(now.getMinutes()).padStart(2, '0');
-      setCurrentTime(`${h}:${m}`);
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
   const totalUnread = chats.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
   const pendingRequestsCount = friendRequests.filter(r => r.toUserId === currentUser.id && r.status === 'pending').length;
 
   return (
-    <div className="w-full h-full min-h-screen bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden select-none">
+    <div className="w-full h-full min-h-0 bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden select-none">
       {/* Background ambient lighting */}
       <div className="absolute -top-40 -left-40 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-teal-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -87,31 +70,10 @@ export const AndroidShell: React.FC = () => {
       <div
         className={`relative flex flex-col bg-slate-950 shadow-2xl transition-all duration-300 overflow-hidden ${
           deviceMode === 'frame'
-            ? 'w-full h-screen md:w-[412px] md:h-[870px] md:rounded-[48px] md:border-[10px] md:border-slate-800 md:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)]'
-            : 'w-full h-screen max-w-5xl md:border-x md:border-slate-800'
+            ? 'w-full h-[100dvh] min-h-0 md:w-[412px] md:h-[870px] md:rounded-[48px] md:border-[10px] md:border-slate-800 md:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)]'
+            : 'w-full h-[100dvh] min-h-0 max-w-5xl md:border-x md:border-slate-800'
         }`}
       >
-        {/* Android Top Status Bar */}
-        <div className="h-10 px-5 pt-1.5 bg-slate-950/90 text-slate-300 flex items-center justify-between text-xs font-semibold z-30 shrink-0 select-none">
-          <span className="font-mono text-[13px] tracking-tight text-white font-bold">
-            {currentTime || '12:30'}
-          </span>
-
-          {/* Front Camera Punch-Hole Mockup (only in frame mode on desktop) */}
-          <div className="w-3.5 h-3.5 rounded-full bg-black border border-slate-800/80 shadow-inner hidden md:block" />
-
-          {/* Status Icons: 5G, Wi-Fi, Battery */}
-          <div className="flex items-center gap-1.5 text-slate-300">
-            <span className="text-[10px] font-bold tracking-tighter text-emerald-400">5G</span>
-            <Signal size={13} strokeWidth={2.4} />
-            <Wifi size={13} strokeWidth={2.4} />
-            <div className="flex items-center gap-0.5">
-              <span className="text-[10px] font-mono">98%</span>
-              <Battery size={14} className="text-emerald-400 fill-emerald-400" />
-            </div>
-          </div>
-        </div>
-
         {/* Screen View Area */}
         <div className="flex-1 overflow-hidden relative flex flex-col">
           {activeChatId ? (

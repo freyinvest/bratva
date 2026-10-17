@@ -48,7 +48,7 @@ useEffect(() => {
   setPhone(currentUser.phone);
   setBio(currentUser.bio);
   setAvatar(currentUser.avatar);
-  setBadge(currentUser.badge);
+  setBadge(currentUser.badge || 'Свой');
 }, [currentUser]);
   const [avatarError, setAvatarError] = useState('');
 
