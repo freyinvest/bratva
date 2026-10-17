@@ -10,7 +10,8 @@ import {
   MessageSquarePlus,
   Shield,
   UserCheck,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Bell,
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { NewChatModal } from './NewChatModal';
@@ -33,8 +34,17 @@ export const ChatList: React.FC = () => {
   } = useChat();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+    typeof Notification === 'undefined' ? 'denied' : Notification.permission
+  );
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [activeMenuChatId, setActiveMenuChatId] = useState<string | null>(null);
+
+  const enableNotifications = async () => {
+    if (typeof Notification === 'undefined') return;
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+  };
 
   // Filter chats
   const filteredChats = chats
@@ -57,7 +67,7 @@ export const ChatList: React.FC = () => {
       // Pinned chats first
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
-      return 0;
+      return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
     });
 
   const handleSelectChat = (chatId: string) => {
@@ -99,6 +109,16 @@ export const ChatList: React.FC = () => {
           </div>
         </div>
 
+        <div className="flex items-center gap-2">
+        <button
+          onClick={() => void enableNotifications()}
+          disabled={notificationPermission === 'denied' || typeof Notification === 'undefined'}
+          className={`w-9 h-9 rounded-full flex items-center justify-center border transition-colors ${notificationPermission === 'granted' ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 disabled:opacity-40'}`}
+          title={notificationPermission === 'granted' ? 'Уведомления браузера включены' : notificationPermission === 'denied' ? 'Разрешите уведомления для сайта в настройках браузера' : 'Включить уведомления браузера'}
+          aria-label="Включить уведомления браузера"
+        >
+          <Bell size={16} />
+        </button>
         {/* User profile toggle / switch account button */}
         <button
           onClick={() => setIsAuthModalOpen(true)}
@@ -115,6 +135,7 @@ export const ChatList: React.FC = () => {
             className="w-7 h-7 rounded-full object-cover border border-emerald-500/40"
           />
         </button>
+        </div>
       </div>
 
 
@@ -228,6 +249,11 @@ export const ChatList: React.FC = () => {
                       <h3 className="font-bold text-sm text-slate-100 truncate group-hover:text-emerald-400 transition-colors">
                         {chat.type === 'direct' ? peerUser?.name || chat.title : chat.title}
                       </h3>
+                      {chat.unreadCount > 0 && (
+                        <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-emerald-500 text-slate-950 text-[11px] font-extrabold flex items-center justify-center shadow-sm shadow-emerald-500/30">
+                          {chat.unreadCount}
+                        </span>
+                      )}
                       {chat.isMuted && <VolumeX size={13} className="text-slate-500 shrink-0" />}
                     </div>
 
@@ -257,11 +283,7 @@ export const ChatList: React.FC = () => {
                       <span>{chat.lastMessage?.text || 'Нет сообщений'}</span>
                     </p>
 
-                    {chat.unreadCount > 0 && (
-                      <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-emerald-500 text-slate-950 text-[11px] font-extrabold flex items-center justify-center shadow-sm shadow-emerald-500/30">
-                        {chat.unreadCount}
-                      </span>
-                    )}
+
                   </div>
                 </div>
 

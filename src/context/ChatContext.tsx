@@ -18,7 +18,7 @@ import {
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy } from 'firebase/firestore';
+import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy, increment } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
 
 interface ChatContextType {
@@ -182,6 +182,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
 
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const activeChatIdRef = useRef<string | null>(activeChatId);
+  useEffect(() => { activeChatIdRef.current = activeChatId; }, [activeChatId]);
   const [activeTab, setActiveTab] = useState<AppTab>('chats');
   const [callState, setCallState] = useState<CallState | null>(null);
   const [localCallStream, setLocalCallStream] = useState<MediaStream | null>(null);
@@ -268,7 +270,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
           title: typeof data.title === 'string' ? data.title : 'Чат',
           avatar: typeof data.avatar === 'string' ? data.avatar : '',
           participants: Array.isArray(data.participants) ? data.participants.filter((id): id is string => typeof id === 'string') : [],
-          unreadCount: typeof data.unreadCount === 'number' ? data.unreadCount : 0,
+          unreadCount: data.unreadCounts && typeof data.unreadCounts === 'object'
+            ? (typeof data.unreadCounts[currentUserId] === 'number' ? data.unreadCounts[currentUserId] : 0)
+            : (typeof data.unreadCount === 'number' ? data.unreadCount : 0),
+          updatedAtMs: typeof data.updatedAtMs === 'number' ? data.updatedAtMs : 0,
           isPinned: Boolean(data.isPinned),
           isMuted: Boolean(data.isMuted),
           updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
@@ -387,10 +392,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       (snapshot) => {
         const isInitialSnapshot = !initializedMessageStreams.has(chatId);
         initializedMessageStreams.add(chatId);
-        if (!isInitialSnapshot && snapshot.docChanges().some((change) =>
-          change.type === 'added' && change.doc.data().senderId !== currentUserId
-        )) {
-          sounds.playReceive();
+        if (!isInitialSnapshot) {
+          const incomingChanges = snapshot.docChanges().filter((change) =>
+            change.type === 'added' && change.doc.data().senderId !== currentUserId
+          );
+          if (incomingChanges.length > 0) sounds.playReceive();
+          incomingChanges.forEach((change) => {
+            const data = change.doc.data();
+            if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+            if (document.visibilityState !== 'hidden' && activeChatIdRef.current === chatId) return;
+            const body = typeof data.text === 'string' && data.text.trim()
+              ? data.text
+              : data.imageUrl ? '📷 Фотография' : data.voiceUrl ? '🎤 Голосовое сообщение' : 'Новое сообщение';
+            const notification = new Notification('Братва — новое сообщение', {
+              body: body.slice(0, 180),
+              icon: '/pwa-192x192.png',
+              tag: `bratva-${chatId}`,
+            });
+            notification.onclick = () => {
+              window.focus();
+              setActiveTab('chats');
+              setActiveChatId(chatId);
+              notification.close();
+            };
+          });
+          if (incomingChanges.length > 0 && activeChatIdRef.current === chatId && document.visibilityState !== 'hidden') {
+            void updateDoc(doc(db, 'chats', chatId), { [`unreadCounts.${currentUserId}`]: 0 })
+              .catch((error) => console.warn('Не удалось сбросить счётчик открытого чата:', error));
+          }
         }
         const remoteMessages: Message[] = snapshot.docs.map((item) => {
           const data = item.data();
@@ -622,6 +651,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         chat.id === chatId ? { ...chat, unreadCount: 0 } : chat
       )
     );
+    if (currentUserId) {
+      void updateDoc(doc(db, 'chats', chatId), { [`unreadCounts.${currentUserId}`]: 0 })
+        .catch((error) => console.warn('Не удалось сбросить счётчик непрочитанных:', error));
+    }
   };
 
   // Отправляем только сообщение текущего пользователя.
@@ -663,6 +696,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     const updatedChat: Chat = {
       ...chat,
       updatedAt: timeStr,
+      updatedAtMs: now.getTime(),
       lastMessage: {
         text: previewText,
         timestamp: timeStr,
@@ -684,6 +718,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       isPinned: Boolean(chat.isPinned),
       isMuted: Boolean(chat.isMuted),
       updatedAt: timeStr,
+      updatedAtMs: now.getTime(),
       lastMessage: updatedChat.lastMessage,
     };
     if (chat.creatorId) chatPayload.creatorId = chat.creatorId;
@@ -706,6 +741,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         // Make sure the shared conversation exists before writing its first message.
         await setDoc(doc(db, 'chats', chatId), chatPayload, { merge: true });
+        const unreadUpdates: Record<string, unknown> = { updatedAtMs: now.getTime() };
+        chat.participants.filter((participantId) => participantId && participantId !== sender.id).forEach((participantId) => {
+          unreadUpdates[`unreadCounts.${participantId}`] = increment(1);
+        });
+        try {
+          // Update unread counts before adding the message so an actively open recipient chat
+          // can immediately reset its own counter when the message snapshot arrives.
+          await updateDoc(doc(db, 'chats', chatId), unreadUpdates);
+        } catch (unreadError) {
+          console.warn('Не удалось обновить счётчик непрочитанных:', unreadError);
+        }
         await setDoc(doc(db, 'chats', chatId, 'messages', messageId), remoteMessage);
       } catch (error) {
         console.error('Не удалось сохранить сообщение в Firebase:', error);
