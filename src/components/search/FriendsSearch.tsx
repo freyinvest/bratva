@@ -4,7 +4,6 @@ import { db } from '../../lib/firebase';
 import {
   Search,
   UserPlus,
-  Phone,
   MessageSquare,
   QrCode,
   Check,
@@ -32,12 +31,11 @@ export const FriendsSearch: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'my' | 'global' | 'requests'>('my');
   const [showQrModal, setShowQrModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [quickPhoneInput, setQuickPhoneInput] = useState('');
-  const [phoneAddStatus, setPhoneAddStatus] = useState<string | null>(null);
   const [networkUsers, setNetworkUsers] = useState<User[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [sendingTo, setSendingTo] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ id: string; text: string } | null>(null);
 
   const pendingRequests = friendRequests.filter(r => r.toUserId === currentUser.id && r.status === 'pending');
 
@@ -113,24 +111,6 @@ export const FriendsSearch: React.FC = () => {
     navigator.clipboard?.writeText?.(`bratva://user/${currentUser.nickname}`);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
-  };
-
-  const handleQuickAddByPhone = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickPhoneInput.trim()) return;
-
-    const cleanInput = quickPhoneInput.replace(/[\s\-\(\)]/g, '');
-    const found = allUsers.find(u => u.phone.replace(/[\s\-\(\)]/g, '').includes(cleanInput));
-
-    if (found) {
-      addFriend(found.id);
-      setPhoneAddStatus(`Пользователь ${found.name} найден! Чат открыт.`);
-      setTimeout(() => setPhoneAddStatus(null), 3000);
-      setQuickPhoneInput('');
-    } else {
-      setPhoneAddStatus('Пользователь с таким номером пока не найден.');
-      setTimeout(() => setPhoneAddStatus(null), 3500);
-    }
   };
 
   return (
@@ -253,6 +233,7 @@ export const FriendsSearch: React.FC = () => {
                       <X size={16} />
                     </button>
                   </div>
+                  {actionMessage?.id === user.id && <p role="status" className="basis-full text-[11px] text-emerald-400 mt-1">{actionMessage.text}</p>}
                 </div>
               ))
             )}
@@ -323,8 +304,12 @@ export const FriendsSearch: React.FC = () => {
                       onClick={async () => {
                         if (sendingTo) return;
                         setSendingTo(user.id);
-                        try { await addFriend(user.id); }
-                        finally { setSendingTo(null); }
+                        try {
+                          await addFriend(user.id);
+                          setActionMessage({ id: user.id, text: 'Заявка отправлена' });
+                        } catch (error) {
+                          setActionMessage({ id: user.id, text: error instanceof Error ? error.message : 'Не удалось отправить заявку' });
+                        } finally { setSendingTo(null); }
                       }}
                       disabled={sendingTo === user.id}
                       className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-50"
