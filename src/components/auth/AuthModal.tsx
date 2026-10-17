@@ -112,6 +112,8 @@ export const AuthModal: React.FC = () => {
   id: credential.user.uid,
   name: profile.name,
   nickname: profile.nickname,
+  nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
+  nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
   avatar: profile.avatar,
   bio: profile.bio,
   status: profile.status,
