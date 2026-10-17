@@ -75,7 +75,7 @@ export const AndroidShell: React.FC = () => {
         }`}
       >
         {/* Screen View Area */}
-        <div className="flex-1 overflow-hidden relative flex flex-col">
+        <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
           {activeChatId ? (
             <>
               {/* Bratva PRO banner inside chat */}
