@@ -55,7 +55,9 @@ interface ChatContextType {
     chatId: string,
     text?: string,
     imageUrl?: string,
-    replyTo?: Message['replyToMessage']
+    replyTo?: Message['replyToMessage'],
+    voiceUrl?: string,
+    voiceDuration?: number
   ) => void;
   toggleReaction: (messageId: string, emoji: string) => void;
   deleteMessage: (messageId: string) => void;
@@ -663,9 +665,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     chatId: string,
     text?: string,
     imageUrl?: string,
-    replyTo?: Message['replyToMessage']
+    replyTo?: Message['replyToMessage'],
+    voiceUrl?: string,
+    voiceDuration?: number
   ) => {
-    if (!text?.trim() && !imageUrl) return;
+    if (!text?.trim() && !imageUrl && !voiceUrl) return;
     if (!currentUserId) return;
     setMessageError(null);
 
@@ -683,6 +687,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       senderId: sender.id,
       ...(text?.trim() ? { text: text.trim() } : {}),
       ...(imageUrl ? { imageUrl } : {}),
+      ...(voiceUrl ? { voiceUrl, voiceDuration: Math.max(1, Math.round(voiceDuration || 1)) } : {}),
       timestamp: timeStr,
       isRead: false,
       ...(replyTo ? { replyToMessage: replyTo } : {}),
@@ -692,7 +697,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     sounds.playSend();
     setMessages((prev) => [...prev, newMsg]);
 
-    const previewText = imageUrl ? '📷 Фотография' : text?.trim() || '';
+    const previewText = imageUrl ? '📷 Фотография' : voiceUrl ? '🎤 Голосовое сообщение' : text?.trim() || '';
     const updatedChat: Chat = {
       ...chat,
       updatedAt: timeStr,
@@ -735,6 +740,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     if (text?.trim()) remoteMessage.text = text.trim();
     if (imageUrl) remoteMessage.imageUrl = imageUrl;
+    if (voiceUrl) {
+      remoteMessage.voiceUrl = voiceUrl;
+      remoteMessage.voiceDuration = Math.max(1, Math.round(voiceDuration || 1));
+    }
     if (replyTo) remoteMessage.replyToMessage = replyTo;
 
     void (async () => {
