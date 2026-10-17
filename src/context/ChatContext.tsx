@@ -663,7 +663,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     setChats((prev) => prev.map((item) => item.id === chatId ? updatedChat : item));
 
-    // The same chat document and message subcollection are shared by every participant.
+    // Persist a clean chat document first (Firestore rejects undefined values),
+    // then write the message to the shared subcollection.
+    const chatPayload: Record<string, unknown> = {
+      id: chat.id,
+      type: chat.type,
+      title: chat.title || '',
+      avatar: chat.avatar || '',
+      participants: chat.participants.filter(Boolean),
+      unreadCount: chat.unreadCount || 0,
+      isPinned: Boolean(chat.isPinned),
+      isMuted: Boolean(chat.isMuted),
+      updatedAt: timeStr,
+      lastMessage: updatedChat.lastMessage,
+    };
+    if (chat.creatorId) chatPayload.creatorId = chat.creatorId;
+    if (chat.description) chatPayload.description = chat.description;
+
     const remoteMessage: Record<string, unknown> = {
       id: messageId,
       chatId,
@@ -677,20 +693,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     if (imageUrl) remoteMessage.imageUrl = imageUrl;
     if (replyTo) remoteMessage.replyToMessage = replyTo;
 
-    void Promise.all([
-      setDoc(doc(db, 'chats', chatId), {
-        ...updatedChat,
-        participants: chat.participants,
-        updatedAt: timeStr,
-        lastMessage: updatedChat.lastMessage,
-      }, { merge: true }),
-      setDoc(doc(db, 'chats', chatId, 'messages', messageId), remoteMessage),
-    ]).catch((error) => {
-      console.error('Не удалось отправить сообщение в общий чат:', error);
-      setMessages((previous) => previous.filter((message) => message.id !== messageId));
-      setChats((previous) => previous.map((item) => item.id === chatId ? chat : item));
-      setMessageError('Сообщение не отправлено. Проверьте интернет и доступ Firebase к чатам.');
-    });
+    void (async () => {
+      try {
+        // Make sure the shared conversation exists before writing its first message.
+        await setDoc(doc(db, 'chats', chatId), chatPayload, { merge: true });
+        await setDoc(doc(db, 'chats', chatId, 'messages', messageId), remoteMessage);
+      } catch (error) {
+        console.error('Не удалось сохранить сообщение в Firebase:', error);
+        setMessages((previous) => previous.filter((message) => message.id !== messageId));
+        setChats((previous) => previous.map((item) => item.id === chatId ? chat : item));
+        const firebaseCode = typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code || '')
+          : '';
+        setMessageError(firebaseCode === 'permission-denied'
+          ? 'Firebase запретил отправку сообщения. Проверьте правила доступа к chats и messages.'
+          : 'Сообщение не отправлено. Проверьте интернет и повторите попытку.');
+      }
+    })();
   };
 
   const toggleReaction = (messageId: string, emoji: string) => {
@@ -808,7 +827,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
       String(now.getMinutes()).padStart(2, '0');
     const chat: Chat = {
-      ...(existing || {}),
       id: sharedChatId,
       type: 'direct',
       title: targetUser.name,
@@ -816,8 +834,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       participants: [currentUserId, targetUserId].sort(),
       unreadCount: existing?.unreadCount || 0,
       isPinned: existing?.isPinned || false,
+      ...(existing?.isMuted !== undefined ? { isMuted: existing.isMuted } : {}),
       updatedAt: existing?.updatedAt || timeStr,
       ...(existing?.lastMessage ? { lastMessage: existing.lastMessage } : {}),
+      ...(existing?.creatorId ? { creatorId: existing.creatorId } : {}),
+      ...(existing?.description ? { description: existing.description } : {}),
     };
 
     setChats((previous) => [

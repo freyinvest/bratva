@@ -292,7 +292,6 @@ export const ChatRoom: React.FC = () => {
           {activeChat.type === 'direct' && otherUser && (
             <div className="space-y-1 text-xs text-slate-300">
               <p><span className="text-slate-500">Никнейм:</span> {otherUser.nickname}</p>
-              <p><span className="text-slate-500">Телефон:</span> {otherUser.phone}</p>
               <p><span className="text-slate-500">Статус:</span> {otherUser.bio}</p>
             </div>
           )}
