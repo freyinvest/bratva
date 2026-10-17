@@ -663,6 +663,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setMessages((prev) => [...prev, welcomeMsg]);
+    void Promise.all([
+      setDoc(doc(db, 'chats', newChatId), newChat),
+      setDoc(doc(db, 'chats', newChatId, 'messages', welcomeMsg.id), {
+        ...welcomeMsg,
+        createdAt: serverTimestamp(),
+      }),
+    ]).catch((error) => console.error('Не удалось сохранить группу в Firebase:', error));
     setActiveChatId(newChatId);
 
     return newChatId;
