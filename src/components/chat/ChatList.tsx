@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { NewChatModal } from './NewChatModal';
+import { PRESET_AVATARS } from '../../data/mockData';
 
 export const ChatList: React.FC = () => {
   const {
@@ -108,8 +109,9 @@ export const ChatList: React.FC = () => {
             {currentUser.name.split(' ')[0]}
           </span>
           <img
-            src={currentUser.avatar}
+            src={currentUser.avatar || PRESET_AVATARS[0]}
             alt={currentUser.name}
+            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
             className="w-7 h-7 rounded-full object-cover border border-emerald-500/40"
           />
         </button>
@@ -187,6 +189,8 @@ export const ChatList: React.FC = () => {
           filteredChats.map((chat) => {
             const isSelected = activeChatId === chat.id;
             const isMenuOpen = activeMenuChatId === chat.id;
+            const peerUser = chat.type === 'direct' ? allUsers.find((user) => user.id !== currentUser.id && chat.participants.includes(user.id)) : undefined;
+            const avatarSrc = (chat.type === 'direct' ? peerUser?.avatar : chat.avatar) || chat.avatar || PRESET_AVATARS[0];
 
             return (
               <div
@@ -201,11 +205,12 @@ export const ChatList: React.FC = () => {
                 {/* Chat Avatar with Status */}
                 <div className="relative shrink-0">
                   <img
-                    src={chat.avatar}
+                    src={avatarSrc}
                     alt={chat.title}
+                    onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
                     className="w-13 h-13 rounded-2xl object-cover border border-slate-800 shadow-sm"
                   />
-                  {chat.type === 'direct' ? (
+                  {chat.type === 'direct' && peerUser?.status === 'online' ? (
                     <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-950" />
                   ) : (
                     <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-slate-800 border border-slate-700 text-emerald-400 flex items-center justify-center text-[9px] font-bold">
