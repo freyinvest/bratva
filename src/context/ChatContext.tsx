@@ -396,47 +396,66 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!currentUserId) return;
 
     const sender = allUsers.find((user) => user.id === currentUserId);
-    if (!sender) return;
+    const chat = chats.find((item) => item.id === chatId);
+    if (!sender || !chat) return;
 
     const now = new Date();
-    const timeStr =
-      String(now.getHours()).padStart(2, '0') +
-      ':' +
+    const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
       String(now.getMinutes()).padStart(2, '0');
-
+    const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
     const newMsg: Message = {
-      id: 'msg-' + Date.now(),
+      id: messageId,
       chatId,
       senderId: sender.id,
-      text,
-      imageUrl,
+      ...(text?.trim() ? { text: text.trim() } : {}),
+      ...(imageUrl ? { imageUrl } : {}),
       timestamp: timeStr,
       isRead: false,
-      replyToMessage: replyTo,
+      ...(replyTo ? { replyToMessage: replyTo } : {}),
       reactions: {},
     };
 
     sounds.playSend();
     setMessages((prev) => [...prev, newMsg]);
 
-    const previewText = imageUrl ? '📷 Фотография' : text || '';
+    const previewText = imageUrl ? '📷 Фотография' : text?.trim() || '';
+    const updatedChat: Chat = {
+      ...chat,
+      updatedAt: timeStr,
+      lastMessage: {
+        text: previewText,
+        timestamp: timeStr,
+        senderId: sender.id,
+        isRead: false,
+      },
+    };
+    setChats((prev) => prev.map((item) => item.id === chatId ? updatedChat : item));
 
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === chatId
-          ? {
-              ...chat,
-              updatedAt: timeStr,
-              lastMessage: {
-                text: previewText,
-                timestamp: timeStr,
-                senderId: sender.id,
-                isRead: false,
-              },
-            }
-          : chat
-      )
-    );
+    // The same chat document and message subcollection are shared by every participant.
+    const remoteMessage: Record<string, unknown> = {
+      id: messageId,
+      chatId,
+      senderId: sender.id,
+      timestamp: timeStr,
+      isRead: false,
+      createdAt: serverTimestamp(),
+      reactions: {},
+    };
+    if (text?.trim()) remoteMessage.text = text.trim();
+    if (imageUrl) remoteMessage.imageUrl = imageUrl;
+    if (replyTo) remoteMessage.replyToMessage = replyTo;
+
+    void Promise.all([
+      setDoc(doc(db, 'chats', chatId), {
+        ...updatedChat,
+        participants: chat.participants,
+        updatedAt: timeStr,
+        lastMessage: updatedChat.lastMessage,
+      }, { merge: true }),
+      setDoc(doc(db, 'chats', chatId, 'messages', messageId), remoteMessage),
+    ]).catch((error) => {
+      console.error('Не удалось отправить сообщение в общий чат:', error);
+    });
   };
 
   const toggleReaction = (messageId: string, emoji: string) => {
@@ -529,56 +548,48 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const startDirectChat = (targetUserId: string): string => {
-    if (!currentUserId) return '';
-
-    const existing = chats.find(
-      (chat) =>
-        chat.type === 'direct' &&
-        chat.participants.includes(currentUserId) &&
-        chat.participants.includes(targetUserId)
-    );
-
-    if (existing) {
-      setActiveChatId(existing.id);
-      setActiveTab('chats');
-      return existing.id;
-    }
+    if (!currentUserId || !targetUserId || targetUserId === currentUserId) return '';
 
     const targetUser = allUsers.find((user) => user.id === targetUserId);
-    if (!targetUser || targetUser.id === currentUserId) return '';
-
     const creator = allUsers.find((user) => user.id === currentUserId);
-    if (!creator) return '';
+    if (!targetUser || !creator) return '';
 
-    const newChatId = 'chat-dir-' + Date.now();
+    // A stable ID makes both accounts open the exact same direct conversation.
+    const sharedChatId = 'direct-' + [currentUserId, targetUserId].sort().join('-');
+    const existing = chats.find((chat) =>
+      chat.type === 'direct' &&
+      chat.participants.includes(currentUserId) &&
+      chat.participants.includes(targetUserId)
+    );
     const now = new Date();
-    const timeStr =
-      String(now.getHours()).padStart(2, '0') +
-      ':' +
+    const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
       String(now.getMinutes()).padStart(2, '0');
-
-    const newChat: Chat = {
-      id: newChatId,
+    const chat: Chat = {
+      ...(existing || {}),
+      id: sharedChatId,
       type: 'direct',
       title: targetUser.name,
-      avatar: targetUser.avatar,
-      participants: [creator.id, targetUserId],
-      unreadCount: 0,
-      isPinned: false,
-      updatedAt: timeStr,
-      lastMessage: {
-        text: 'Диалог начат',
-        timestamp: timeStr,
-        senderId: creator.id,
-        isRead: true,
-      },
+      avatar: targetUser.avatar || '',
+      participants: [currentUserId, targetUserId].sort(),
+      unreadCount: existing?.unreadCount || 0,
+      isPinned: existing?.isPinned || false,
+      updatedAt: existing?.updatedAt || timeStr,
+      ...(existing?.lastMessage ? { lastMessage: existing.lastMessage } : {}),
     };
 
-    setChats((prev) => [newChat, ...prev]);
-    setActiveChatId(newChatId);
+    setChats((previous) => [
+      chat,
+      ...previous.filter((item) => item.id !== sharedChatId &&
+        !(item.type === 'direct' && item.participants.includes(currentUserId) && item.participants.includes(targetUserId))),
+    ]);
+    setMessages((previous) => previous.map((message) =>
+      existing && message.chatId === existing.id ? { ...message, chatId: sharedChatId } : message
+    ));
+    setActiveChatId(sharedChatId);
     setActiveTab('chats');
-
-    return newChatId;
+    void setDoc(doc(db, 'chats', sharedChatId), chat, { merge: true })
+      .catch((error) => console.error('Не удалось создать общий личный чат:', error));
+    return sharedChatId;
   };
 
   const addFriend = async (targetUserId: string): Promise<void> => {
