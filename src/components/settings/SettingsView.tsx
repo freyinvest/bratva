@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { sounds } from '../../utils/sound';
+import { enablePushNotifications, disablePushNotifications } from '../../services/pushNotifications';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -28,6 +29,32 @@ export const SettingsView: React.FC = () => {
   } = useChat();
 
   const [cacheCleared, setCacheCleared] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushStatus, setPushStatus] = useState('');
+  const [pushEnabled, setPushEnabled] = useState(() => localStorage.getItem('bratva_push_enabled') === 'true');
+
+  const handlePushToggle = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    setPushStatus('');
+    try {
+      if (pushEnabled) {
+        await disablePushNotifications(currentUser.id);
+        localStorage.setItem('bratva_push_enabled', 'false');
+        setPushEnabled(false);
+        setPushStatus('Push-уведомления отключены на этом устройстве.');
+      } else {
+        await enablePushNotifications(currentUser.id);
+        localStorage.setItem('bratva_push_enabled', 'true');
+        setPushEnabled(true);
+        setPushStatus('Уведомления разрешены. Теперь новые сообщения могут приходить, даже когда вкладка закрыта.');
+      }
+    } catch (error) {
+      setPushStatus(error instanceof Error ? error.message : 'Не удалось настроить push-уведомления.');
+    } finally {
+      setPushBusy(false);
+    }
+  };
   const [selectedTheme, setSelectedTheme] = useState<'dark-emerald' | 'light-blue'>(() => {
     try {
       return localStorage.getItem('bratva-theme') === 'light-blue' ? 'light-blue' : 'dark-emerald';
@@ -179,6 +206,19 @@ export const SettingsView: React.FC = () => {
                 />
               </button>
             </div>
+          <div className="p-3 bg-slate-950/50 rounded-2xl border border-slate-800/60 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white">Push-уведомления</p>
+                <p className="text-[11px] text-slate-400">Новые сообщения, когда Братва работает в фоне или закрыта</p>
+              </div>
+              <button type="button" disabled={pushBusy || !currentUser.id} onClick={handlePushToggle}
+                className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold disabled:opacity-50 ${pushEnabled ? 'bg-slate-700 text-white' : 'bg-emerald-500 text-slate-950'}`}>
+                {pushBusy ? 'Подождите…' : pushEnabled ? 'Отключить' : 'Включить'}
+              </button>
+            </div>
+            {pushStatus && <p role="status" className="text-[11px] text-slate-300 break-words">{pushStatus}</p>}
+          </div>
           </div>
         </div>
 
