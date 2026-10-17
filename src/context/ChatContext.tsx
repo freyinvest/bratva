@@ -57,7 +57,8 @@ interface ChatContextType {
     imageUrl?: string,
     replyTo?: Message['replyToMessage'],
     voiceUrl?: string,
-    voiceDuration?: number
+    voiceDuration?: number,
+    attachment?: { url: string; name: string; type: string }
   ) => void;
   toggleReaction: (messageId: string, emoji: string) => void;
   deleteMessage: (messageId: string) => void;
@@ -452,6 +453,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
             imageUrl: typeof data.imageUrl === 'string' ? data.imageUrl : undefined,
             voiceUrl: typeof data.voiceUrl === 'string' ? data.voiceUrl : undefined,
             voiceDuration: typeof data.voiceDuration === 'number' ? data.voiceDuration : undefined,
+            attachmentUrl: typeof data.attachmentUrl === 'string' ? data.attachmentUrl : undefined,
+            attachmentName: typeof data.attachmentName === 'string' ? data.attachmentName : undefined,
+            attachmentType: typeof data.attachmentType === 'string' ? data.attachmentType : undefined,
             timestamp: typeof data.timestamp === 'string' ? data.timestamp : '',
             isRead: Boolean(data.isRead),
             replyToMessage: data.replyToMessage as Message['replyToMessage'],
@@ -686,9 +690,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     imageUrl?: string,
     replyTo?: Message['replyToMessage'],
     voiceUrl?: string,
-    voiceDuration?: number
+    voiceDuration?: number,
+    attachment?: { url: string; name: string; type: string }
   ) => {
-    if (!text?.trim() && !imageUrl && !voiceUrl) return;
+    if (!text?.trim() && !imageUrl && !voiceUrl && !attachment) return;
     if (!currentUserId) return;
     setMessageError(null);
 
@@ -707,6 +712,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       ...(text?.trim() ? { text: text.trim() } : {}),
       ...(imageUrl ? { imageUrl } : {}),
       ...(voiceUrl ? { voiceUrl, voiceDuration: Math.max(1, Math.round(voiceDuration || 1)) } : {}),
+      ...(attachment ? { attachmentUrl: attachment.url, attachmentName: attachment.name, attachmentType: attachment.type } : {}),
       timestamp: timeStr,
       isRead: false,
       ...(replyTo ? { replyToMessage: replyTo } : {}),
@@ -716,7 +722,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     sounds.playSend();
     setMessages((prev) => [...prev, newMsg]);
 
-    const previewText = imageUrl ? '📷 Фотография' : voiceUrl ? '🎤 Голосовое сообщение' : text?.trim() || '';
+    const previewText = imageUrl ? '📷 Фотография' : voiceUrl ? '🎤 Голосовое сообщение' : attachment ? '📎 ' + attachment.name : text?.trim() || '';
     const updatedChat: Chat = {
       ...chat,
       updatedAt: timeStr,
@@ -762,6 +768,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     if (voiceUrl) {
       remoteMessage.voiceUrl = voiceUrl;
       remoteMessage.voiceDuration = Math.max(1, Math.round(voiceDuration || 1));
+    }
+    if (attachment) {
+      remoteMessage.attachmentUrl = attachment.url;
+      remoteMessage.attachmentName = attachment.name;
+      remoteMessage.attachmentType = attachment.type;
     }
     if (replyTo) remoteMessage.replyToMessage = replyTo;
 
