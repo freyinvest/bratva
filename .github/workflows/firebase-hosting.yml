@@ -12,6 +12,8 @@ permissions:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
+    env:
+      VITE_FIREBASE_VAPID_KEY: ${{ secrets.VITE_FIREBASE_VAPID_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
