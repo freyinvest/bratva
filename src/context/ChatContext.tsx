@@ -827,7 +827,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
       String(now.getMinutes()).padStart(2, '0');
     const chat: Chat = {
-      ...(existing || {}),
       id: sharedChatId,
       type: 'direct',
       title: targetUser.name,
@@ -835,8 +834,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       participants: [currentUserId, targetUserId].sort(),
       unreadCount: existing?.unreadCount || 0,
       isPinned: existing?.isPinned || false,
+      ...(existing?.isMuted !== undefined ? { isMuted: existing.isMuted } : {}),
       updatedAt: existing?.updatedAt || timeStr,
       ...(existing?.lastMessage ? { lastMessage: existing.lastMessage } : {}),
+      ...(existing?.creatorId ? { creatorId: existing.creatorId } : {}),
+      ...(existing?.description ? { description: existing.description } : {}),
     };
 
     setChats((previous) => [
