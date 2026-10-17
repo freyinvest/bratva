@@ -35,7 +35,9 @@ export const ChatRoom: React.FC = () => {
     deleteMessage,
     startCall,
     isTypingUserId,
-    setPreviewImage
+    setPreviewImage,
+    messageError,
+    clearMessageError
   } = useChat();
 
   const [inputText, setInputText] = useState('');
@@ -615,6 +617,13 @@ export const ChatRoom: React.FC = () => {
               {em}
             </button>
           ))}
+        </div>
+      )}
+
+      {messageError && (
+        <div role="alert" className="shrink-0 px-3 py-2 bg-rose-950/70 border-t border-rose-800 text-xs text-rose-200 flex items-center justify-between gap-2">
+          <span>{messageError}</span>
+          <button type="button" onClick={clearMessageError} className="text-rose-300 hover:text-white" aria-label="Закрыть сообщение об ошибке"><X size={15} /></button>
         </div>
       )}
 
