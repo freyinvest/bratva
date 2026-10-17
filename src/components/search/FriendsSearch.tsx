@@ -316,7 +316,7 @@ export const FriendsSearch: React.FC = () => {
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
-                      onClick={() => startDirectChat(user.id)}
+                      onClick={() => startDirectChat(user.id, user)}
                       className="p-2.5 rounded-xl bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 border border-slate-700 hover:border-emerald-500 transition-all shadow-sm"
                       title="Написать"
                     >
