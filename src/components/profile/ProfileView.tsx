@@ -1,9 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   Edit3,
-  Phone,
-  Mail,
-  AtSign,
   Shield,
   QrCode,
   Bookmark,
@@ -38,17 +35,15 @@ export const ProfileView: React.FC = () => {
   // Edit form state
   const [name, setName] = useState(currentUser.name);
   const [nickname, setNickname] = useState(currentUser.nickname);
-  const [phone, setPhone] = useState(currentUser.phone);
   const [bio, setBio] = useState(currentUser.bio);
   const [avatar, setAvatar] = useState(currentUser.avatar);
 
 useEffect(() => {
   setName(currentUser.name);
   setNickname(currentUser.nickname);
-  setPhone(currentUser.phone);
   setBio(currentUser.bio);
   setAvatar(currentUser.avatar);
-  setBadge(currentUser.badge);
+  setBadge(currentUser.badge || 'Свой');
 }, [currentUser]);
   const [avatarError, setAvatarError] = useState('');
 
@@ -111,7 +106,6 @@ useEffect(() => {
     updateProfile({
       name,
       nickname: nickname.startsWith('@') ? nickname : `@${nickname}`,
-      phone,
       bio,
       avatar,
       badge
@@ -136,7 +130,6 @@ useEffect(() => {
             onClick={() => {
               setName(currentUser.name);
               setNickname(currentUser.nickname);
-              setPhone(currentUser.phone);
               setBio(currentUser.bio);
               setAvatar(currentUser.avatar);
               setBadge(currentUser.badge || 'Свой');
@@ -210,43 +203,6 @@ useEffect(() => {
             </div>
             <p className="text-base font-black text-white">{totalPhotos}</p>
             <p className="text-[10px] text-slate-400 font-medium">Медиа</p>
-          </div>
-        </div>
-
-        {/* Contact Info Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-            Контактные данные
-          </h4>
-
-          <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-950/60 border border-slate-800/60">
-            <div className="w-9 h-9 rounded-xl bg-slate-800 text-emerald-400 flex items-center justify-center shrink-0">
-              <Phone size={17} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-slate-400">Номер телефона</p>
-              <p className="text-xs font-bold text-white truncate">{currentUser.phone}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-950/60 border border-slate-800/60">
-            <div className="w-9 h-9 rounded-xl bg-slate-800 text-teal-400 flex items-center justify-center shrink-0">
-              <Mail size={17} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-slate-400">Электронная почта</p>
-              <p className="text-xs font-bold text-white truncate">{currentUser.email}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-950/60 border border-slate-800/60">
-            <div className="w-9 h-9 rounded-xl bg-slate-800 text-indigo-400 flex items-center justify-center shrink-0">
-              <AtSign size={17} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-slate-400">Никнейм для поиска</p>
-              <p className="text-xs font-bold text-white truncate">{currentUser.nickname}</p>
-            </div>
           </div>
         </div>
 
@@ -379,18 +335,7 @@ useEffect(() => {
               />
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1">Номер телефона:</label>
-              <input
-                type="tel"
-                required
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div>
+<div>
               <label className="text-xs font-semibold text-slate-300 block mb-1">Статус / Цитата братвы:</label>
               <textarea
                 rows={2}
