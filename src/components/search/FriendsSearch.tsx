@@ -341,8 +341,7 @@ export const FriendsSearch: React.FC = () => {
                     >
                       <MessageSquare size={16} />
                     </button>}
-                    {true && (
-                      <>
+                    <>
                         <button
                           type="button"
                           onClick={() => {
@@ -361,8 +360,7 @@ export const FriendsSearch: React.FC = () => {
                           title="Заблокировать контакт"
                           aria-label="Заблокировать контакт"
                         ><Ban size={15}/></button>
-                      </>
-                    )}
+                    </>
                     {!sentRequestIds.has(user.id) && (
                       <button
                         onClick={async () => {
