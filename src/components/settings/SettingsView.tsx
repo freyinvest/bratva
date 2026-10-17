@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Bell,
   Volume2,
@@ -28,7 +28,22 @@ export const SettingsView: React.FC = () => {
   } = useChat();
 
   const [cacheCleared, setCacheCleared] = useState(false);
-  const [selectedTheme, setSelectedTheme] = useState('dark-emerald');
+  const [selectedTheme, setSelectedTheme] = useState<'dark-emerald' | 'light-blue'>(() => {
+    try {
+      return localStorage.getItem('bratva-theme') === 'light-blue' ? 'light-blue' : 'dark-emerald';
+    } catch {
+      return 'dark-emerald';
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = selectedTheme;
+    try {
+      localStorage.setItem('bratva-theme', selectedTheme);
+    } catch {
+      // Keep the selected theme for this session if storage is unavailable.
+    }
+  }, [selectedTheme]);
   const [autoDownload, setAutoDownload] = useState(true);
 
   const handleTestSound = () => {
@@ -51,6 +66,45 @@ export const SettingsView: React.FC = () => {
       </div>
 
       <div className="p-4 space-y-4">
+        {/* Appearance / theme */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-3">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1 flex items-center gap-1.5">
+            <Moon size={13} className="text-emerald-400" />
+            Оформление интерфейса
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              aria-pressed={selectedTheme === 'dark-emerald'}
+              onClick={() => setSelectedTheme('dark-emerald')}
+              className={`rounded-2xl border p-3 text-left transition-colors ${
+                selectedTheme === 'dark-emerald' ? 'border-emerald-400 bg-slate-800' : 'border-slate-700 bg-slate-950/50'
+              }`}
+            >
+              <span className="mb-2 flex h-8 overflow-hidden rounded-lg border border-slate-700">
+                <span className="w-1/3 bg-slate-950" /><span className="w-1/3 bg-slate-900" /><span className="w-1/3 bg-emerald-500" />
+              </span>
+              <span className="block text-xs font-bold text-white">Тёмная</span>
+              <span className="block text-[10px] text-slate-400">Изумрудная</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={selectedTheme === 'light-blue'}
+              onClick={() => setSelectedTheme('light-blue')}
+              className={`rounded-2xl border p-3 text-left transition-colors ${
+                selectedTheme === 'light-blue' ? 'border-sky-500 bg-sky-100' : 'border-slate-700 bg-slate-950/50'
+              }`}
+            >
+              <span className="mb-2 flex h-8 overflow-hidden rounded-lg border border-sky-200">
+                <span className="w-1/3 bg-sky-50" /><span className="w-1/3 bg-sky-100" /><span className="w-1/3 bg-sky-400" />
+              </span>
+              <span className={`block text-xs font-bold ${selectedTheme === 'light-blue' ? 'text-sky-950' : 'text-white'}`}>Светло-голубая</span>
+              <span className={`block text-[10px] ${selectedTheme === 'light-blue' ? 'text-sky-800' : 'text-slate-400'}`}>Светлая тема</span>
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400">Выбор сохраняется на этом устройстве.</p>
+        </div>
+
         {/* Device frame toggle banner */}
         <div className="p-4 bg-gradient-to-r from-slate-900 to-slate-900/80 border border-slate-800 rounded-3xl space-y-3">
           <div className="flex items-center gap-2.5">
