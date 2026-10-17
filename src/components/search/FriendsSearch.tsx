@@ -139,7 +139,7 @@ export const FriendsSearch: React.FC = () => {
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const handleQuickAddByPhone = (e: React.FormEvent) => {
+  const handleQuickAddByPhone = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickPhoneInput.trim()) return;
 
@@ -147,8 +147,12 @@ export const FriendsSearch: React.FC = () => {
     const found = allUsers.find(u => u.phone.replace(/[\s\-\(\)]/g, '').includes(cleanInput));
 
     if (found) {
-      addFriend(found.id);
-      setPhoneAddStatus(`Пользователь ${found.name} найден! Чат открыт.`);
+      try {
+        await addFriend(found.id, found);
+        setPhoneAddStatus(`Заявка пользователю ${found.name} отправлена или уже существует.`);
+      } catch (error) {
+        setPhoneAddStatus(error instanceof Error ? error.message : 'Не удалось отправить заявку.');
+      }
       setTimeout(() => setPhoneAddStatus(null), 3000);
       setQuickPhoneInput('');
     } else {
