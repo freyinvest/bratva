@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Search,
   UserPlus,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { User } from '../../types';
+import { searchUserByEmail } from '../../lib/functions';
 
 export const FriendsSearch: React.FC = () => {
   const {
@@ -32,6 +33,11 @@ export const FriendsSearch: React.FC = () => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [quickPhoneInput, setQuickPhoneInput] = useState('');
   const [phoneAddStatus, setPhoneAddStatus] = useState<string | null>(null);
+  const [remoteUser, setRemoteUser] = useState<User | null>(null);
+  const [isSearchingRemote, setIsSearchingRemote] = useState(false);
+  const [remoteSearchMessage, setRemoteSearchMessage] = useState<string | null>(null);
+  const [submittingFriendId, setSubmittingFriendId] = useState<string | null>(null);
+  const [friendActionError, setFriendActionError] = useState<string | null>(null);
 
   const pendingRequests = friendRequests.filter(r => r.toUserId === currentUser.id && r.status === 'pending');
 
@@ -49,10 +55,83 @@ export const FriendsSearch: React.FC = () => {
 
   const myFriends = allUsers.filter(u => u.id !== currentUser.id);
 
-  const displayedUsers = myFriends.filter(u => {
+  useEffect(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const looksLikeFullEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(query);
+    let cancelled = false;
+
+    if (!looksLikeFullEmail) {
+      setRemoteUser(null);
+      setRemoteSearchMessage(null);
+      setIsSearchingRemote(false);
+      return;
+    }
+
+    setIsSearchingRemote(true);
+    setRemoteSearchMessage(null);
+    const timer = setTimeout(async () => {
+      try {
+        const profile = await searchUserByEmail(query);
+        if (cancelled) return;
+        if (profile) {
+          setRemoteUser({
+            id: profile.id,
+            name: profile.name,
+            nickname: profile.nickname,
+            avatar: profile.avatar,
+            bio: profile.bio,
+            status: profile.status,
+            lastSeen: profile.lastSeen,
+            badge: profile.badge,
+            email: query,
+            phone: '',
+          });
+          setRemoteSearchMessage(null);
+        } else {
+          setRemoteUser(null);
+          setRemoteSearchMessage('Пользователь с таким email не найден.');
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setRemoteUser(null);
+        setRemoteSearchMessage(error instanceof Error
+          ? error.message
+          : 'Поиск в базе временно недоступен.');
+      } finally {
+        if (!cancelled) setIsSearchingRemote(false);
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
+  const localDisplayedUsers = myFriends.filter(u => {
     if (!searchQuery.trim()) return true;
     return isQueryMatching(u, searchQuery);
   });
+  const displayedUsers = remoteUser && !localDisplayedUsers.some(user => user.id === remoteUser.id)
+    ? [...localDisplayedUsers, remoteUser]
+    : localDisplayedUsers;
+
+  const getFriendRequestState = (user: User) => friendRequests.find((request) =>
+    (request.fromUser.id === currentUser.id && request.toUserId === user.id) ||
+    (request.fromUser.id === user.id && request.toUserId === currentUser.id)
+  );
+
+  const handleAddFriend = async (user: User) => {
+    setFriendActionError(null);
+    setSubmittingFriendId(user.id);
+    try {
+      await addFriend(user.id, user);
+    } catch (error) {
+      setFriendActionError(error instanceof Error ? error.message : 'Не удалось отправить заявку. Попробуйте ещё раз.');
+    } finally {
+      setSubmittingFriendId(null);
+    }
+  };
 
   const handleCopyProfile = () => {
     navigator.clipboard?.writeText?.(`bratva://user/${currentUser.nickname}`);
@@ -101,7 +180,7 @@ export const FriendsSearch: React.FC = () => {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
           <input
             type="text"
-            placeholder="Введите @ник (например @kosmos) или +7 999..."
+            placeholder="Имя, @ник, email или телефон"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
@@ -109,12 +188,19 @@ export const FriendsSearch: React.FC = () => {
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
+              aria-label="Очистить поиск"
               className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-300"
             >
               ✕
             </button>
           )}
         </div>
+        {(isSearchingRemote || remoteSearchMessage || friendActionError) && (
+          <p role={friendActionError || remoteSearchMessage ? 'alert' : 'status'}
+             className={`px-1 text-[11px] ${friendActionError || (remoteSearchMessage && !remoteSearchMessage.includes('не найден')) ? 'text-amber-300' : 'text-slate-400'}`}>
+            {friendActionError || (isSearchingRemote ? 'Ищем точное совпадение в Firestore…' : remoteSearchMessage)}
+          </p>
+        )}
 
         {/* Tab switcher */}
         <div className="grid grid-cols-3 p-1 bg-slate-900 rounded-2xl border border-slate-800/80">
@@ -216,14 +302,14 @@ export const FriendsSearch: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
-                      onClick={() => acceptFriendRequest(req.id)}
+                      onClick={() => { void acceptFriendRequest(req.id).catch((error) => setFriendActionError(error instanceof Error ? error.message : 'Не удалось принять заявку.')); }}
                       className="p-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-colors"
                       title="Принять"
                     >
                       <Check size={16} strokeWidth={3} />
                     </button>
                     <button
-                      onClick={() => declineFriendRequest(req.id)}
+                      onClick={() => { void declineFriendRequest(req.id).catch((error) => setFriendActionError(error instanceof Error ? error.message : 'Не удалось отклонить заявку.')); }}
                       className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
                       title="Отклонить"
                     >
@@ -246,7 +332,7 @@ export const FriendsSearch: React.FC = () => {
               <div className="py-12 text-center text-slate-500 space-y-2">
                 <Search size={32} className="mx-auto text-slate-600" />
                 <p className="text-xs">Пользователь не найден</p>
-                <p className="text-[11px] text-slate-600">Проверьте правильность никнейма или телефона</p>
+                <p className="text-[11px] text-slate-600">Проверьте имя, никнейм, email или телефон</p>
               </div>
             ) : (
               displayedUsers.map((user) => (
@@ -292,13 +378,26 @@ export const FriendsSearch: React.FC = () => {
                     >
                       <MessageSquare size={16} />
                     </button>
-                    <button
-                      onClick={() => addFriend(user.id)}
-                      className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-                      title="Добавить"
-                    >
-                      <UserPlus size={16} />
-                    </button>
+                    {(() => {
+                      const request = getFriendRequestState(user);
+                      const isAccepted = request?.status === 'accepted';
+                      const isOutgoingPending = request?.status === 'pending' && request.fromUser.id === currentUser.id;
+                      const isIncomingPending = request?.status === 'pending' && request.fromUser.id === user.id;
+                      const disabled = !!request && request.status !== 'declined';
+                      const label = isAccepted ? 'Уже друзья' : isOutgoingPending ? 'Отправлена' : isIncomingPending ? 'Входящая' : 'Добавить';
+                      return (
+                        <button
+                          onClick={() => { void handleAddFriend(user); }}
+                          disabled={disabled || submittingFriendId === user.id}
+                          aria-label={label + ': ' + user.name}
+                          className="flex items-center gap-1.5 max-w-[108px] px-2 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold transition-colors disabled:opacity-70 disabled:cursor-default"
+                          title={label}
+                        >
+                          {isAccepted ? <Check size={15} className="text-emerald-400 shrink-0" /> : <UserPlus size={15} className="shrink-0" />}
+                          <span className="truncate">{submittingFriendId === user.id ? 'Отправка…' : label}</span>
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               ))
