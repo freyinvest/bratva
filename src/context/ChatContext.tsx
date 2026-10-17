@@ -4,6 +4,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
 } from 'react';
 import {
   User,
@@ -17,7 +18,7 @@ import {
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy, increment } from 'firebase/firestore';
+import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
 
 interface ChatContextType {
@@ -30,6 +31,9 @@ interface ChatContextType {
   activeChat: Chat | null;
   activeTab: AppTab;
   callState: CallState | null;
+  localCallStream: MediaStream | null;
+  remoteCallStream: MediaStream | null;
+  callError: string | null;
   previewImage: string | null;
   chatFilter: 'all' | 'direct' | 'groups' | 'unread';
   isTypingUserId: string | null;
@@ -76,6 +80,8 @@ interface ChatContextType {
     bio?: string;
   }) => void;
   startCall: (targetUser: User, type: 'audio' | 'video') => void;
+  acceptCall: () => Promise<void>;
+  declineCall: () => void;
   endCall: () => void;
   toggleCallMute: () => void;
   toggleCallVideo: () => void;
@@ -176,6 +182,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('chats');
   const [callState, setCallState] = useState<CallState | null>(null);
+  const [localCallStream, setLocalCallStream] = useState<MediaStream | null>(null);
+  const [remoteCallStream, setRemoteCallStream] = useState<MediaStream | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [chatFilter, setChatFilter] = useState<
     'all' | 'direct' | 'groups' | 'unread'
@@ -307,6 +318,116 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     ));
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [currentUserId, remoteChatKey]);
+
+
+  // Incoming call notifications are shared between accounts through Firestore.
+  useEffect(() => {
+    if (!currentUserId) return;
+    return onSnapshot(
+      query(collection(db, 'calls'), where('calleeId', '==', currentUserId)),
+      (snapshot) => {
+        const incoming = snapshot.docs.find((item) => {
+          const data = item.data();
+          return data.status === 'ringing' && item.id !== callState?.callId;
+        });
+        if (!incoming || callState) return;
+        const data = incoming.data();
+        setCallError(null);
+        setCallState({
+          isActive: true,
+          callId: incoming.id,
+          direction: 'incoming',
+          type: 'audio',
+          user: {
+            id: String(data.callerId || ''),
+            name: String(data.callerName || 'Пользователь'),
+            nickname: String(data.callerNickname || ''),
+            phone: '',
+            email: '',
+            avatar: String(data.callerAvatar || ''),
+            bio: '',
+            status: 'online',
+            lastSeen: 'в сети',
+          },
+          status: 'ringing',
+          isMuted: false,
+          isVideoOff: true,
+          durationSeconds: 0,
+        });
+      },
+      (error) => console.error('Не удалось получить входящие звонки:', error),
+    );
+  }, [currentUserId, callState?.callId, callState?.isActive]);
+
+  // Negotiate WebRTC media and listen for the other participant's ICE candidates.
+  useEffect(() => {
+    if (!callState?.callId) return;
+    const callRef = doc(db, 'calls', callState.callId);
+    const remoteCandidateCollection = callState.direction === 'outgoing' ? 'calleeCandidates' : 'callerCandidates';
+    const stopCall = onSnapshot(callRef, async (snapshot) => {
+      if (!snapshot.exists()) return;
+      const data = snapshot.data();
+      if (data.status === 'declined' || data.status === 'ended') {
+        peerConnectionRef.current?.close();
+        peerConnectionRef.current = null;
+        setLocalCallStream((stream) => { stream?.getTracks().forEach((track) => track.stop()); return null; });
+        setRemoteCallStream(null);
+        setCallState((current) => current?.callId === snapshot.id ? null : current);
+        return;
+      }
+      const peer = peerConnectionRef.current;
+      if (!peer) return;
+      try {
+        if (data.status === 'accepted' && callState.direction === 'outgoing' && !peer.localDescription) {
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          await updateDoc(callRef, { offer: { type: offer.type, sdp: offer.sdp }, status: 'connecting' });
+          setCallState((current) => current?.callId === snapshot.id ? { ...current, status: 'connecting' } : current);
+        }
+        if (data.offer && callState.direction === 'incoming' && !peer.remoteDescription) {
+          await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
+          for (const candidate of pendingIceCandidatesRef.current.splice(0)) {
+            await peer.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => undefined);
+          }
+          const answer = await peer.createAnswer();
+          await peer.setLocalDescription(answer);
+          await updateDoc(callRef, { answer: { type: answer.type, sdp: answer.sdp }, status: 'connecting' });
+          setCallState((current) => current?.callId === snapshot.id ? { ...current, status: 'connecting' } : current);
+        }
+        if (data.answer && callState.direction === 'outgoing' && !peer.remoteDescription) {
+          await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+          for (const candidate of pendingIceCandidatesRef.current.splice(0)) {
+            await peer.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => undefined);
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка соединения WebRTC:', error);
+        setCallError('Не удалось установить аудиосоединение. Проверьте разрешение на микрофон и подключение.');
+      }
+    }, (error) => {
+      console.error('Не удалось отслеживать состояние звонка:', error);
+      setCallError('Потеряно соединение с сигнализацией звонка.');
+    });
+    const stopCandidates = onSnapshot(
+      collection(db, 'calls', callState.callId, remoteCandidateCollection),
+      (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type !== 'added') return;
+          const candidate = change.doc.data() as RTCIceCandidateInit;
+          const peer = peerConnectionRef.current;
+          if (peer?.remoteDescription) {
+            void peer.addIceCandidate(new RTCIceCandidate(candidate)).catch((error) =>
+              console.warn('ICE-кандидат отклонён:', error)
+            );
+          } else {
+            pendingIceCandidatesRef.current.push(candidate);
+          }
+        });
+      },
+      (error) => console.error('Не удалось получить ICE-кандидаты:', error),
+    );
+    return () => { stopCall(); stopCandidates(); };
+  }, [callState?.callId, callState?.direction]);
 
   const currentUser =
     allUsers.find((user) => user.id === currentUserId) || EMPTY_USER;
