@@ -206,6 +206,7 @@ export const SettingsView: React.FC = () => {
                 />
               </button>
             </div>
+          </div>
           <div className="p-3 bg-slate-950/50 rounded-2xl border border-slate-800/60 space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -218,7 +219,6 @@ export const SettingsView: React.FC = () => {
               </button>
             </div>
             {pushStatus && <p role="status" className="text-[11px] text-slate-300 break-words">{pushStatus}</p>}
-          </div>
           </div>
         </div>
 
