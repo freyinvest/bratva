@@ -18,7 +18,7 @@ import {
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy, increment } from 'firebase/firestore';
+import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy, increment, deleteDoc } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
 
 interface ChatContextType {
@@ -69,6 +69,10 @@ interface ChatContextType {
   ) => string;
   startDirectChat: (targetUserId: string, targetProfile?: User) => string;
   addFriend: (targetUserId: string) => Promise<void>;
+  contactRelations: Record<string, 'removed' | 'blocked'>;
+  removeContact: (targetUser: User) => Promise<void>;
+  blockContact: (targetUser: User) => Promise<void>;
+  unblockContact: (targetUserId: string) => Promise<void>;
   acceptFriendRequest: (requestId: string) => void;
   declineFriendRequest: (requestId: string) => void;
   updateProfile: (updated: Partial<User>) => void;
@@ -182,6 +186,21 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Friend requests are loaded from Firestore for the signed-in account.
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [contactRelations, setContactRelations] = useState<Record<string, 'removed' | 'blocked'>>({});
+
+  useEffect(() => {
+    if (!currentUserId) { setContactRelations({}); return; }
+    const relationsQuery = query(collection(db, 'userContacts'), where('ownerId', '==', currentUserId));
+    return onSnapshot(relationsQuery, (snapshot) => {
+      const next: Record<string, 'removed' | 'blocked'> = {};
+      snapshot.docs.forEach((item) => {
+        const data = item.data();
+        const contactId = typeof data.contactId === 'string' ? data.contactId : '';
+        if (contactId && (data.status === 'removed' || data.status === 'blocked')) next[contactId] = data.status;
+      });
+      setContactRelations(next);
+    }, (error) => console.error('Не удалось синхронизировать список контактов:', error));
+  }, [currentUserId]);
 
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const activeChatIdRef = useRef<string | null>(activeChatId);
@@ -873,7 +892,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const startDirectChat = (targetUserId: string, targetProfile?: User): string => {
-    if (!currentUserId || !targetUserId || targetUserId === currentUserId) return '';
+    if (!currentUserId || !targetUserId || targetUserId === currentUserId || contactRelations[targetUserId] === 'blocked') return '';
 
     const targetUser = allUsers.find((user) => user.id === targetUserId) || targetProfile;
     const creator = allUsers.find((user) => user.id === currentUserId);
@@ -939,6 +958,37 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       status: 'pending',
       createdAt: serverTimestamp(),
     });
+  };
+
+  const saveContactRelation = async (targetUser: User, status: 'removed' | 'blocked') => {
+    if (!currentUserId || !targetUser.id || targetUser.id === currentUserId) return;
+    const relationId = currentUserId + '_' + targetUser.id;
+    setContactRelations((previous) => ({ ...previous, [targetUser.id]: status }));
+    await setDoc(doc(db, 'userContacts', relationId), {
+      ownerId: currentUserId,
+      contactId: targetUser.id,
+      status,
+      contactName: targetUser.name || '',
+      contactNickname: targetUser.nickname || '',
+      contactAvatar: targetUser.avatar || '',
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    if (status === 'blocked') {
+      const direct = chats.find((chat) => chat.type === 'direct' && chat.participants.includes(targetUser.id) && chat.participants.includes(currentUserId));
+      if (direct) {
+        setChats((previous) => previous.filter((chat) => chat.id !== direct.id));
+        setMessages((previous) => previous.filter((message) => message.chatId !== direct.id));
+        if (activeChatId === direct.id) setActiveChatId(null);
+      }
+    }
+  };
+
+  const removeContact = (targetUser: User) => saveContactRelation(targetUser, 'removed');
+  const blockContact = (targetUser: User) => saveContactRelation(targetUser, 'blocked');
+  const unblockContact = async (targetUserId: string) => {
+    if (!currentUserId || !targetUserId) return;
+    await deleteDoc(doc(db, 'userContacts', currentUserId + '_' + targetUserId));
+    setContactRelations((previous) => { const next = { ...previous }; delete next[targetUserId]; return next; });
   };
 
   const acceptFriendRequest = (requestId: string) => {
@@ -1254,6 +1304,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         createGroupChat,
         startDirectChat,
         addFriend,
+        contactRelations,
+        removeContact,
+        blockContact,
+        unblockContact,
         acceptFriendRequest,
         declineFriendRequest,
         updateProfile,
