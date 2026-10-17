@@ -9,12 +9,10 @@ export const CallOverlay: React.FC = () => {
     localCallStream,
     remoteCallStream,
     callError,
-    startCall,
     acceptCall,
     declineCall,
     endCall,
     toggleCallMute,
-    currentUser,
   } = useChat();
   const [seconds, setSeconds] = useState(0);
   const audioRef = useRef<HTMLAudioElement>(null);
