@@ -83,10 +83,10 @@ export async function notifyPushWorkerForMessage(
     },
     body: JSON.stringify({ chatId, messageId }),
   });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(typeof payload.error === 'string'
+  const payload = await response.json().catch(() => null) as { sent?: unknown; error?: unknown } | null;
+  if (!response.ok || !payload || typeof payload.sent !== 'number') {
+    throw new Error(typeof payload?.error === 'string'
       ? payload.error
-      : `Cloudflare Worker вернул ошибку (${response.status}).`);
+      : `Cloudflare Worker не подтвердил отправку уведомления (${response.status}).`);
   }
 }
