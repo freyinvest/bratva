@@ -20,6 +20,7 @@ import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy, increment, deleteDoc } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
+import { notifyPushWorkerForMessage } from '../services/pushNotifications';
 
 interface ChatContextType {
   currentUser: User;
@@ -792,6 +793,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
           console.warn('Не удалось обновить счётчик непрочитанных:', unreadError);
         }
         await setDoc(doc(db, 'chats', chatId, 'messages', messageId), remoteMessage);
+        void notifyPushWorkerForMessage(chatId, messageId).catch((error) => {
+          // Push delivery is best-effort: never undo a message already saved in Firebase.
+          console.warn('Не удалось передать push-уведомление в Cloudflare Worker:', error);
+        });
       } catch (error) {
         console.error('Не удалось сохранить сообщение в Firebase:', error);
         setMessages((previous) => previous.filter((message) => message.id !== messageId));
