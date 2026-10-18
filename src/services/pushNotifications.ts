@@ -1,8 +1,9 @@
 import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging';
-import { app, db } from '../lib/firebase';
+import { app, auth, db } from '../lib/firebase';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
+const PUSH_WORKER_URL = 'https://bratva.vototene997.workers.dev';
 
 function deviceId() {
   const key = 'bratva_push_device_id';
@@ -60,4 +61,32 @@ export async function listenForForegroundPush(
     );
   });
   return unsubscribe;
+}
+
+/**
+ * Notify Cloudflare after Firestore confirms the message was written.
+ * The Worker verifies the Firebase token and re-reads chat/message data.
+ */
+export async function notifyPushWorkerForMessage(
+  chatId: string,
+  messageId: string,
+): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Сессия Firebase не найдена.');
+  const idToken = await user.getIdToken();
+
+  const response = await fetch(PUSH_WORKER_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ chatId, messageId }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(typeof payload.error === 'string'
+      ? payload.error
+      : `Cloudflare Worker вернул ошибку (${response.status}).`);
+  }
 }
