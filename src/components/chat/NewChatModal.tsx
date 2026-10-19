@@ -146,11 +146,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
                       <h4 className="text-sm font-semibold text-slate-100 group-hover:text-emerald-400 transition-colors truncate">
                         {user.name}
                       </h4>
-                      {user.badge && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-800 text-emerald-400 border border-emerald-500/20">
-                          {user.badge}
-                        </span>
-                      )}
+
                     </div>
                     <p className="text-xs text-slate-400 truncate">{user.nickname} • {user.phone}</p>
                   </div>
