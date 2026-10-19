@@ -237,7 +237,7 @@ async function sendFcm(accessToken, token, body, chatId, title = 'Братва �
           body,
         },
         data: {
-          title: 'Братва — новое сообщение',
+          title,
           body,
           chatId,
           url: '/',
@@ -425,12 +425,24 @@ export default {
           failures: failedResults.map(({ httpStatus, fcmStatus }) => ({ httpStatus, fcmStatus })),
         });
       }
-      if (!sent) {
-        await releaseClaim(accessToken, claim.id);
-        throw new WorkerError(503, 'Firebase Cloud Messaging rejected the notification');
-      }
-      console.info('FCM push dispatch completed', { chatId, tokenCount: tokens.length, sent, failed: failedResults.length });
-      return json({ sent, failed: failedResults.length }, 200, headers);
+      if (!sent) await releaseClaim(accessToken, claim.id);
+      const failureDetails = failedResults.map(({ httpStatus, fcmStatus }) => ({ httpStatus, fcmStatus }));
+      console.info('FCM push dispatch completed', {
+        chatId,
+        tokenCount: tokens.length,
+        recipientCount: recipients.length,
+        sent,
+        failed: failedResults.length,
+        failures: failureDetails,
+      });
+      return json({
+        sent,
+        failed: failedResults.length,
+        tokenCount: tokens.length,
+        recipientCount: recipients.length,
+        failureDetails,
+        reason: sent === 0 ? 'fcm_rejected' : undefined,
+      }, 200, headers);
     } catch (error) {
       const status = error instanceof WorkerError ? error.status : 500;
       console.error('Bratva push worker request failed', {
