@@ -32,6 +32,8 @@ export interface Message {
   attachmentName?: string;
   attachmentType?: string;
   timestamp: string;
+  /** Milliseconds since epoch, used to merge messages from legacy conversation IDs. */
+  createdAtMs?: number;
   isRead: boolean;
   replyToMessage?: {
     id: string;

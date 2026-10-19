@@ -196,7 +196,7 @@ export const AuthModal: React.FC = () => {
           return;
         }
 
-        const profile = profileSnapshot.data() as AppUser;
+        const profile = { ...(profileSnapshot.data() as AppUser), id: credential.user.uid };
 
 await setDoc(doc(db, 'publicProfiles', credential.user.uid), {
   id: credential.user.uid,
