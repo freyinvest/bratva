@@ -7,48 +7,36 @@ const PUSH_WORKER_URL = 'https://bratva.vototene997.workers.dev';
 const PUSH_SW_VERSION = 'bratva-push-2026-10-19-1';
 
 
-async function waitForPushWorkerVersion(
+async function hasExpectedPushWorkerVersion(
   registration: ServiceWorkerRegistration,
-): Promise<ServiceWorkerRegistration> {
-  const deadline = Date.now() + 20000;
+): Promise<boolean> {
+  const worker = registration.active;
+  if (!worker || worker.state !== 'activated') return false;
 
-  while (Date.now() < deadline) {
-    const worker = registration.active;
-    if (worker?.state === 'activated') {
-      const versionMatches = await new Promise<boolean>((resolve) => {
-        const channel = new MessageChannel();
-        const timeoutId = window.setTimeout(() => {
-          channel.port1.close();
-          resolve(false);
-        }, 1000);
+  return new Promise<boolean>((resolve) => {
+    const channel = new MessageChannel();
+    const timeoutId = window.setTimeout(() => {
+      channel.port1.close();
+      resolve(false);
+    }, 700);
 
-        channel.port1.onmessage = (event: MessageEvent) => {
-          window.clearTimeout(timeoutId);
-          channel.port1.close();
-          resolve(
-            event.data?.type === 'BRATVA_PUSH_SW_READY' &&
-            event.data?.version === PUSH_SW_VERSION,
-          );
-        };
+    channel.port1.onmessage = (event: MessageEvent) => {
+      window.clearTimeout(timeoutId);
+      channel.port1.close();
+      resolve(
+        event.data?.type === 'BRATVA_PUSH_SW_READY' &&
+        event.data?.version === PUSH_SW_VERSION,
+      );
+    };
 
-        try {
-          worker.postMessage({ type: 'BRATVA_PUSH_SW_PING' }, [channel.port2]);
-        } catch {
-          window.clearTimeout(timeoutId);
-          channel.port1.close();
-          resolve(false);
-        }
-      });
-
-      if (versionMatches) return registration;
+    try {
+      worker.postMessage({ type: 'BRATVA_PUSH_SW_PING' }, [channel.port2]);
+    } catch {
+      window.clearTimeout(timeoutId);
+      channel.port1.close();
+      resolve(false);
     }
-
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-
-  throw new Error(
-    'Фоновый обработчик push ещё не обновился. Закройте и заново откройте Bratva, затем нажмите «Обновить регистрацию».',
-  );
+  });
 }
 
 async function registerAppServiceWorker(): Promise<ServiceWorkerRegistration> {
@@ -57,31 +45,29 @@ async function registerAppServiceWorker(): Promise<ServiceWorkerRegistration> {
     updateViaCache: 'none',
   });
 
-  // Explicitly check the deployed script. An existing activated /sw.js may be
-  // an older version that has no Firebase Messaging handler imported into it.
+  // Check the deployed script explicitly. An existing activated /sw.js may be
+  // an older version that doesn't import the Firebase Messaging handler.
   await registration.update();
-
-  // Vite PWA's generated worker understands this message when auto-update is on.
-  // Ask an updated worker to activate now rather than registering an FCM token
-  // against the previous active worker.
-  registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
 
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
-    const activeUrl = registration.active?.scriptURL;
-    const activeState = registration.active?.state;
-    if (activeUrl === expectedScriptUrl && activeState === 'activated') {
-      try {
-        return await waitForPushWorkerVersion(registration);
-      } catch {
-        // Continue waiting: a fresh worker may still be installing/activating.
-      }
+    // When an update is waiting, activate it so registration doesn't continue
+    // using an older service worker that lacks the background push handler.
+    registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+
+    if (
+      registration.active?.scriptURL === expectedScriptUrl &&
+      registration.active.state === 'activated' &&
+      await hasExpectedPushWorkerVersion(registration)
+    ) {
+      return registration;
     }
+
     await new Promise((resolve) => window.setTimeout(resolve, 250));
   }
 
   throw new Error(
-    'Service Worker Bratva не обновился. Закройте вкладки Bratva в этом браузере, откройте сайт заново и повторите регистрацию.',
+    'Фоновый обработчик push не обновился. Закройте другие вкладки Bratva в этом браузере, откройте сайт заново и нажмите «Обновить регистрацию».',
   );
 }
 
