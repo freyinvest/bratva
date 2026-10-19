@@ -221,7 +221,7 @@ function notificationText(message) {
   return 'Новое сообщение';
 }
 
-async function sendFcm(accessToken, token, body, chatId) {
+async function sendFcm(accessToken, token, body, chatId, title = 'Братва — новое сообщение') {
   const response = await fetch('https://fcm.googleapis.com/v1/projects/' + PROJECT_ID + '/messages:send', {
     method: 'POST',
     headers: {
@@ -233,11 +233,11 @@ async function sendFcm(accessToken, token, body, chatId) {
         token,
         // Explicit notification payload is more reliable for background Web Push delivery.
         notification: {
-          title: 'Братва — новое сообщение',
+          title,
           body,
         },
         data: {
-          title: 'Братва — новое сообщение',
+          title,
           body,
           chatId,
           url: '/',
@@ -267,7 +267,7 @@ export default {
       return json({
         ok: true,
         worker: 'bratva-push',
-        version: 'background-push-diagnostics-v1',
+        version: 'push-chat-self-test-v1',
         secretsConfigured: Boolean(env.FIREBASE_API_KEY && env.FIREBASE_SERVICE_ACCOUNT_JSON),
       }, 200, { 'Cache-Control': 'no-store' });
     }
@@ -286,8 +286,9 @@ export default {
       if (!bearer) throw new WorkerError(401, 'Sign in to continue');
       const data = await request.json().catch(() => null);
       if (!data || typeof data !== 'object') throw new WorkerError(400, 'Expected JSON body');
+      const action = data.action === 'testPush' ? 'testPush' : 'message';
       const chatId = assertDocId(data.chatId, 'chatId');
-      const messageId = assertDocId(data.messageId, 'messageId');
+      const messageId = action === 'testPush' ? '' : assertDocId(data.messageId, 'messageId');
       const senderId = await verifiedUid(bearer[1], env.FIREBASE_API_KEY);
 
       let account;
@@ -303,12 +304,69 @@ export default {
 
       const accessToken = await googleAccessToken(account);
       const encodedChatId = encodeURIComponent(chatId);
-      const encodedMessageId = encodeURIComponent(messageId);
       const chat = await getDocument(accessToken, 'chats/' + encodedChatId);
       if (!chat) throw new WorkerError(404, 'Chat or message not found');
       const participants = stringArrayField(chat, 'participants');
       if (!participants.includes(senderId)) throw new WorkerError(403, 'You are not a participant in this chat');
 
+      if (action === 'testPush') {
+        if (stringField(chat, 'type') !== 'direct') {
+          throw new WorkerError(400, 'Для теста push откройте личный чат один на один');
+        }
+        const targets = Array.from(new Set(participants.filter((id) => id && id !== senderId)));
+        if (targets.length !== 1) throw new WorkerError(400, 'Не удалось определить получателя личного чата');
+        const recipientId = targets[0];
+        const block = await getDocument(
+          accessToken,
+          'userContacts/' + encodeURIComponent(recipientId + '_' + senderId),
+        );
+        if (block && stringField(block, 'status') === 'blocked') {
+          return json({ action: 'testPush', sent: 0, failed: 0, tokenCount: 0, recipientCount: 1, reason: 'recipient_blocked' }, 200, headers);
+        }
+
+        const rows = await queryTokens(accessToken, [recipientId]);
+        const tokens = Array.from(new Set(rows
+          .filter((row) => stringField(row.document, 'userId') === recipientId)
+          .map((row) => stringField(row.document, 'token'))
+          .filter(Boolean)));
+        if (!tokens.length) {
+          console.warn('Push self-test found no recipient tokens', { chatId, recipientCount: 1 });
+          return json({ action: 'testPush', sent: 0, failed: 0, tokenCount: 0, recipientCount: 1, reason: 'no_recipient_push_tokens' }, 200, headers);
+        }
+
+        const testBody = 'Тестовое push-уведомление. Чат и сообщения не изменены.';
+        const results = await Promise.all(tokens.map(async (token) => {
+          try {
+            return await sendFcm(accessToken, token, testBody, chatId, 'Братва — тест уведомления');
+          } catch {
+            return { ok: false, httpStatus: 0, fcmStatus: 'NETWORK_ERROR', fcmMessage: '' };
+          }
+        }));
+        const sent = results.filter((result) => result.ok).length;
+        const failures = results.filter((result) => !result.ok).map(({ httpStatus, fcmStatus, fcmMessage }) => ({
+          httpStatus,
+          fcmStatus,
+          detail: fcmMessage,
+        }));
+        console.info('FCM push self-test completed', {
+          chatId,
+          tokenCount: tokens.length,
+          sent,
+          failed: failures.length,
+          failures: failures.map(({ httpStatus, fcmStatus }) => ({ httpStatus, fcmStatus })),
+        });
+        return json({
+          action: 'testPush',
+          recipientCount: 1,
+          tokenCount: tokens.length,
+          sent,
+          failed: failures.length,
+          failures,
+          reason: sent === 0 ? 'fcm_rejected' : undefined,
+        }, 200, headers);
+      }
+
+      const encodedMessageId = encodeURIComponent(messageId);
       const message = await getDocument(
         accessToken,
         'chats/' + encodedChatId + '/messages/' + encodedMessageId,
@@ -367,12 +425,24 @@ export default {
           failures: failedResults.map(({ httpStatus, fcmStatus }) => ({ httpStatus, fcmStatus })),
         });
       }
-      if (!sent) {
-        await releaseClaim(accessToken, claim.id);
-        throw new WorkerError(503, 'Firebase Cloud Messaging rejected the notification');
-      }
-      console.info('FCM push dispatch completed', { chatId, tokenCount: tokens.length, sent, failed: failedResults.length });
-      return json({ sent, failed: failedResults.length }, 200, headers);
+      if (!sent) await releaseClaim(accessToken, claim.id);
+      const failureDetails = failedResults.map(({ httpStatus, fcmStatus }) => ({ httpStatus, fcmStatus }));
+      console.info('FCM push dispatch completed', {
+        chatId,
+        tokenCount: tokens.length,
+        recipientCount: recipients.length,
+        sent,
+        failed: failedResults.length,
+        failures: failureDetails,
+      });
+      return json({
+        sent,
+        failed: failedResults.length,
+        tokenCount: tokens.length,
+        recipientCount: recipients.length,
+        failureDetails,
+        reason: sent === 0 ? 'fcm_rejected' : undefined,
+      }, 200, headers);
     } catch (error) {
       const status = error instanceof WorkerError ? error.status : 500;
       console.error('Bratva push worker request failed', {

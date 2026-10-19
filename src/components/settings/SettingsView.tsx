@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { sounds } from '../../utils/sound';
-import { enablePushNotifications, disablePushNotifications } from '../../services/pushNotifications';
+import { enablePushNotifications, disablePushNotifications, sendPushTestToChat } from '../../services/pushNotifications';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -25,12 +25,16 @@ export const SettingsView: React.FC = () => {
     setSoundEnabled,
     deviceMode,
     setDeviceMode,
-    currentUser
+    currentUser,
+    activeChatId,
+    activeChat,
   } = useChat();
 
   const [cacheCleared, setCacheCleared] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushStatus, setPushStatus] = useState('');
+  const [pushTestBusy, setPushTestBusy] = useState(false);
+  const [pushTestStatus, setPushTestStatus] = useState('');
   const pushPreferenceKey = currentUser.id ? `bratva_push_enabled_${currentUser.id}` : '';
   const [pushEnabled, setPushEnabled] = useState(false);
 
@@ -76,6 +80,35 @@ export const SettingsView: React.FC = () => {
       setPushBusy(false);
     }
   };
+  const handlePushTest = async () => {
+    if (pushTestBusy || !activeChatId || activeChat?.type !== 'direct') {
+      setPushTestStatus('Откройте личный чат с собеседником, затем перейдите в настройки.');
+      return;
+    }
+    setPushTestBusy(true);
+    setPushTestStatus('Отправляем диагностическое уведомление на зарегистрированные устройства собеседника…');
+    try {
+      const result = await sendPushTestToChat(activeChatId);
+      if (result.reason === 'recipient_blocked') {
+        setPushTestStatus('Тест не отправлен: собеседник заблокировал отправителя.');
+      } else if (result.reason === 'no_recipient_push_tokens' || result.tokenCount === 0) {
+        setPushTestStatus('Worker нашёл собеседника, но в Firestore нет push-токенов его браузеров. Нужно заново зарегистрировать уведомления именно под аккаунтом получателя.');
+      } else if (result.sent === 0) {
+        const reasons = result.failures?.map((failure) => `${failure.fcmStatus} (HTTP ${failure.httpStatus})`).join(', ');
+        setPushTestStatus(`FCM отверг все ${result.tokenCount} токен(а/ов). ${reasons || result.reason || 'См. диагностический результат в консоли браузера.'}`);
+      } else if (result.failed > 0) {
+        const reasons = result.failures?.map((failure) => `${failure.fcmStatus} (HTTP ${failure.httpStatus})`).join(', ');
+        setPushTestStatus(`FCM принял ${result.sent} из ${result.tokenCount} токенов; отклонено: ${result.failed}. ${reasons || ''} Это нужно будет исправить для неработающих браузеров.`);
+      } else {
+        setPushTestStatus(`FCM принял отправку на ${result.sent} токен(а/ов) собеседника. Это подтверждает участок Worker → FCM, но не гарантирует показ уведомления браузером. Попросите собеседника проверить, пришло ли оно.`);
+      }
+    } catch (error) {
+      setPushTestStatus(error instanceof Error ? error.message : 'Push-тест не выполнен.');
+    } finally {
+      setPushTestBusy(false);
+    }
+  };
+
   const [selectedTheme, setSelectedTheme] = useState<'dark-emerald' | 'neutral' | 'light-blue'>(() => {
     try {
       const saved = localStorage.getItem('bratva-theme');
@@ -263,6 +296,18 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
             {pushStatus && <p role="status" className="text-[11px] text-slate-300 break-words">{pushStatus}</p>}
+            <div className="border-t border-slate-800 pt-3 space-y-2">
+              <div>
+                <p className="text-xs font-bold text-white">Диагностика доставки</p>
+                <p className="text-[11px] text-slate-400">Отправляет тест только собеседнику из открытого личного чата; реальные сообщения не создаются.</p>
+              </div>
+              <button type="button" disabled={pushTestBusy || !currentUser.id || !activeChatId || activeChat?.type !== 'direct'} onClick={handlePushTest}
+                className="w-full px-3 py-2 rounded-xl text-xs font-bold bg-sky-500/15 border border-sky-500/40 text-sky-200 disabled:opacity-40">
+                {pushTestBusy ? 'Проверяем доставку…' : 'Проверить push собеседнику'}
+              </button>
+              {!activeChatId || activeChat?.type !== 'direct' ? <p className="text-[11px] text-slate-500">Сначала откройте личный чат, затем перейдите в настройки, не закрывая выбор чата.</p> : null}
+              {pushTestStatus && <p role="status" className="text-[11px] text-slate-300 break-words">{pushTestStatus}</p>}
+            </div>
           </div>
         </div>
 
