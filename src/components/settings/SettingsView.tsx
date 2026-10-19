@@ -89,10 +89,10 @@ export const SettingsView: React.FC = () => {
     setPushTestStatus('Отправляем диагностическое уведомление на зарегистрированные устройства собеседника…');
     try {
       const result = await sendPushTestToChat(activeChatId);
-      if (result.reason === 'no_recipient_push_tokens' || result.tokenCount === 0) {
-        setPushTestStatus('Worker нашёл собеседника, но в Firestore нет push-токенов его браузеров. Нужно заново зарегистрировать уведомления именно под аккаунтом получателя.');
-      } else if (result.reason === 'recipient_blocked') {
+      if (result.reason === 'recipient_blocked') {
         setPushTestStatus('Тест не отправлен: собеседник заблокировал отправителя.');
+      } else if (result.reason === 'no_recipient_push_tokens' || result.tokenCount === 0) {
+        setPushTestStatus('Worker нашёл собеседника, но в Firestore нет push-токенов его браузеров. Нужно заново зарегистрировать уведомления именно под аккаунтом получателя.');
       } else if (result.sent === 0) {
         const reasons = result.failures?.map((failure) => `${failure.fcmStatus} (HTTP ${failure.httpStatus})`).join(', ');
         setPushTestStatus(`FCM отверг все ${result.tokenCount} токен(а/ов). ${reasons || result.reason || 'См. диагностический результат в консоли браузера.'}`);
