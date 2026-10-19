@@ -265,11 +265,46 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     if (!currentUserId) return;
-    try {
-      localStorage.setItem(`bratva_messages_${currentUserId}`, JSON.stringify(messages));
-    } catch (error) {
-      // Storage quota errors must never crash the chat screen after sending media.
-      console.warn('Не удалось сохранить сообщения в локальном кэше:', error);
+
+    const cacheKey = `bratva_messages_${currentUserId}`;
+    const isRemoteUrl = (value: string | undefined) =>
+      Boolean(value && !/^data:/i.test(value));
+    const compactCache = (limit: number): Message[] => {
+      // Firestore remains the source of truth. Base64 media in messages can consume
+      // megabytes in localStorage, so keep a lightweight text/history cache only.
+      const recentMessages = limit === 0 ? [] : messages.slice(-limit);
+      return recentMessages.map((message) => ({
+        ...message,
+        imageUrl: isRemoteUrl(message.imageUrl) ? message.imageUrl : undefined,
+        voiceUrl: isRemoteUrl(message.voiceUrl) ? message.voiceUrl : undefined,
+        attachmentUrl: isRemoteUrl(message.attachmentUrl) ? message.attachmentUrl : undefined,
+      }));
+    };
+
+    let saved = false;
+    let lastError: unknown = null;
+    // Retry with smaller snapshots if this browser's storage is already nearly full.
+    for (const limit of [150, 75, 30, 0]) {
+      try {
+        const serialized = JSON.stringify(compactCache(limit));
+        // Keep a margin for other app data and browser storage accounting.
+        if (serialized.length > 900_000) continue;
+        localStorage.setItem(cacheKey, serialized);
+        saved = true;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (!saved) {
+      // Cached messages are expendable; Firestore holds the canonical message history.
+      try {
+        localStorage.removeItem(cacheKey);
+      } catch (error) {
+        lastError = error;
+      }
+      console.warn('Не удалось сохранить локальный кэш сообщений; история будет загружена из Firebase.', lastError);
     }
   }, [messages, currentUserId]);
 
