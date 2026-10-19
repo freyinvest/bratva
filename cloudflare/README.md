@@ -1,6 +1,6 @@
 # Cloudflare Worker for Bratva push notifications
 
-This Worker replaces the Firestore-triggered Firebase Cloud Function so message push delivery can run on Cloudflare's free Worker tier. The existing Firebase Web Push / FCM subscription is still needed.
+This Worker replaces the Firestore-triggered Firebase Cloud Function so message push delivery can run on Cloudflare's free Worker tier. The existing Firebase Web Push / FCM subscription is still needed. The frontend uses Vite PWA's generated `/sw.js` as the single root-scope worker, and imports `/firebase-messaging-sw.js` into it so Workbox caching and Firebase background push do not compete for the same service-worker scope.
 
 ## 1. Configure the Worker
 
