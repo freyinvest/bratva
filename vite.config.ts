@@ -11,6 +11,12 @@ export default defineConfig(() => ({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Use one root-scope service worker for both PWA caching and Firebase
+      // Cloud Messaging. Registering a second worker at the same scope would
+      // replace this one and break closed-tab push delivery.
+      workbox: {
+        importScripts: ['/firebase-messaging-sw.js'],
+      },
       manifest: {
         name: 'Братва',
         short_name: 'Братва',
