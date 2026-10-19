@@ -24,11 +24,18 @@ import { useChat } from '../../context/ChatContext';
 import { Message, User } from '../../types';
 import { PRESET_AVATARS } from '../../data/mockData';
 
+const messageOrderTimestamp = (message: Message): number => {
+  if (typeof message.createdAtMs === 'number') return message.createdAtMs;
+  const match = message.id.match(/^msg-(?:grp-init-)?(\d+)/);
+  return match ? Number(match[1]) : 0;
+};
+
 export const ChatRoom: React.FC = () => {
   const {
     activeChat,
     activeChatId,
     setActiveChatId,
+    chats,
     messages,
     currentUser,
     allUsers,
@@ -63,7 +70,24 @@ export const ChatRoom: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const chatMessages = messages.filter(m => m.chatId === activeChatId);
+  // Old clients can have different document IDs for the same two-person conversation.
+  // Display messages from every direct-chat document for this participant pair.
+  const relatedChatIds = activeChat?.type === 'direct'
+    ? chats.filter((chat) =>
+        chat.type === 'direct' &&
+        chat.participants.length === activeChat.participants.length &&
+        chat.participants.every((participantId) => activeChat.participants.includes(participantId))
+      ).map((chat) => chat.id)
+    : activeChatId ? [activeChatId] : [];
+  const seenMessageIds = new Set<string>();
+  const chatMessages = messages
+    .filter((message) => relatedChatIds.includes(message.chatId))
+    .filter((message) => {
+      if (seenMessageIds.has(message.id)) return false;
+      seenMessageIds.add(message.id);
+      return true;
+    })
+    .sort((a, b) => messageOrderTimestamp(a) - messageOrderTimestamp(b));
 
     // Auto scroll only inside the chat messages container
   useEffect(() => {
