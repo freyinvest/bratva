@@ -4,7 +4,52 @@ import { app, auth, db } from '../lib/firebase';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 const PUSH_WORKER_URL = 'https://bratva.vototene997.workers.dev';
+const PUSH_SW_VERSION = 'bratva-push-2026-10-19-1';
 
+
+async function waitForPushWorkerVersion(
+  registration: ServiceWorkerRegistration,
+): Promise<ServiceWorkerRegistration> {
+  const deadline = Date.now() + 20000;
+
+  while (Date.now() < deadline) {
+    const worker = registration.active;
+    if (worker?.state === 'activated') {
+      const versionMatches = await new Promise<boolean>((resolve) => {
+        const channel = new MessageChannel();
+        const timeoutId = window.setTimeout(() => {
+          channel.port1.close();
+          resolve(false);
+        }, 1000);
+
+        channel.port1.onmessage = (event: MessageEvent) => {
+          window.clearTimeout(timeoutId);
+          channel.port1.close();
+          resolve(
+            event.data?.type === 'BRATVA_PUSH_SW_READY' &&
+            event.data?.version === PUSH_SW_VERSION,
+          );
+        };
+
+        try {
+          worker.postMessage({ type: 'BRATVA_PUSH_SW_PING' }, [channel.port2]);
+        } catch {
+          window.clearTimeout(timeoutId);
+          channel.port1.close();
+          resolve(false);
+        }
+      });
+
+      if (versionMatches) return registration;
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+
+  throw new Error(
+    'Фоновый обработчик push ещё не обновился. Закройте и заново откройте Bratva, затем нажмите «Обновить регистрацию».',
+  );
+}
 
 async function registerAppServiceWorker(): Promise<ServiceWorkerRegistration> {
   const expectedScriptUrl = new URL('/sw.js', window.location.origin).href;
@@ -12,46 +57,32 @@ async function registerAppServiceWorker(): Promise<ServiceWorkerRegistration> {
     updateViaCache: 'none',
   });
 
-  const isReady = () =>
-    registration.active?.scriptURL === expectedScriptUrl &&
-    registration.active.state === 'activated';
+  // Explicitly check the deployed script. An existing activated /sw.js may be
+  // an older version that has no Firebase Messaging handler imported into it.
+  await registration.update();
 
-  if (!isReady()) {
-    await new Promise<void>((resolve, reject) => {
-      const timeoutId = window.setTimeout(() => {
-        cleanup();
-        reject(new Error('Service Worker не активировался. Обновите страницу и попробуйте снова.'));
-      }, 15000);
+  // Vite PWA's generated worker understands this message when auto-update is on.
+  // Ask an updated worker to activate now rather than registering an FCM token
+  // against the previous active worker.
+  registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
 
-      const check = () => {
-        if (!isReady()) return;
-        cleanup();
-        resolve();
-      };
-      const watch = (worker: ServiceWorker | null) => {
-        worker?.addEventListener('statechange', check);
-      };
-      const cleanup = () => {
-        window.clearTimeout(timeoutId);
-        registration.removeEventListener('updatefound', onUpdateFound);
-        registration.installing?.removeEventListener('statechange', check);
-        registration.waiting?.removeEventListener('statechange', check);
-        registration.active?.removeEventListener('statechange', check);
-      };
-      const onUpdateFound = () => {
-        watch(registration.installing);
-        check();
-      };
-
-      registration.addEventListener('updatefound', onUpdateFound);
-      watch(registration.installing);
-      watch(registration.waiting);
-      watch(registration.active);
-      check();
-    });
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    const activeUrl = registration.active?.scriptURL;
+    const activeState = registration.active?.state;
+    if (activeUrl === expectedScriptUrl && activeState === 'activated') {
+      try {
+        return await waitForPushWorkerVersion(registration);
+      } catch {
+        // Continue waiting: a fresh worker may still be installing/activating.
+      }
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
   }
 
-  return registration;
+  throw new Error(
+    'Service Worker Bratva не обновился. Закройте вкладки Bratva в этом браузере, откройте сайт заново и повторите регистрацию.',
+  );
 }
 
 function deviceId() {
