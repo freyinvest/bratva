@@ -231,13 +231,21 @@ async function sendFcm(accessToken, token, body, chatId) {
     body: JSON.stringify({
       message: {
         token,
+        // Explicit notification payload is more reliable for background Web Push delivery.
+        notification: {
+          title: 'Братва — новое сообщение',
+          body,
+        },
         data: {
           title: 'Братва — новое сообщение',
           body,
           chatId,
           url: '/',
         },
-        webpush: { headers: { Urgency: 'high', TTL: '86400' } },
+        webpush: {
+          headers: { Urgency: 'high', TTL: '86400' },
+          fcm_options: { link: 'https://bratva-msg.web.app/' },
+        },
       },
     }),
   });
