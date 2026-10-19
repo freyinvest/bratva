@@ -13,6 +13,10 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
+  // FCM displays notification-payload messages automatically in the background.
+  // Only create a manual notification for data-only messages.
+  if (payload.notification) return;
+
   const title = payload.data?.title || 'Братва — новое сообщение';
   const body = payload.data?.body || 'Вам пришло новое сообщение';
   self.registration.showNotification(title, {
