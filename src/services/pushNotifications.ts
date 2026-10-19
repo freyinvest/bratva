@@ -83,10 +83,24 @@ export async function notifyPushWorkerForMessage(
     },
     body: JSON.stringify({ chatId, messageId }),
   });
-  const payload = await response.json().catch(() => null) as { sent?: unknown; error?: unknown } | null;
+  const payload = await response.json().catch(() => null) as {
+    sent?: unknown;
+    failed?: unknown;
+    duplicate?: unknown;
+    reason?: unknown;
+    recipientCount?: unknown;
+    error?: unknown;
+  } | null;
   if (!response.ok || !payload || typeof payload.sent !== 'number') {
     throw new Error(typeof payload?.error === 'string'
       ? payload.error
       : `Cloudflare Worker не подтвердил отправку уведомления (${response.status}).`);
+  }
+  if (payload.sent === 0 && payload.duplicate !== true) {
+    console.warn('Bratva push diagnostic: Worker processed message but sent no notifications.', {
+      reason: payload.reason || 'no_successful_delivery',
+      recipientCount: payload.recipientCount,
+      failed: payload.failed,
+    });
   }
 }

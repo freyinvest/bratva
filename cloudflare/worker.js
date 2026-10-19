@@ -249,11 +249,29 @@ async function sendFcm(accessToken, token, body, chatId) {
       },
     }),
   });
-  return response.ok;
+  const payload = await response.json().catch(() => ({}));
+  if (response.ok) return { ok: true, httpStatus: response.status };
+  const fcmError = payload && payload.error ? payload.error : {};
+  return {
+    ok: false,
+    httpStatus: response.status,
+    fcmStatus: typeof fcmError.status === 'string' ? fcmError.status : 'FCM_ERROR',
+    fcmMessage: typeof fcmError.message === 'string' ? fcmError.message.slice(0, 180) : '',
+  };
 }
 
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/health') {
+      return json({
+        ok: true,
+        worker: 'bratva-push',
+        version: 'background-push-diagnostics-v1',
+        secretsConfigured: Boolean(env.FIREBASE_API_KEY && env.FIREBASE_SERVICE_ACCOUNT_JSON),
+      }, 200, { 'Cache-Control': 'no-store' });
+    }
+
     const origin = request.headers.get('Origin');
     const headers = cors(origin, env);
     if (origin && !origins(env).includes(origin)) return json({ error: 'Origin not allowed' }, 403, headers);
@@ -309,14 +327,23 @@ export default {
         return block && stringField(block, 'status') === 'blocked' ? null : recipientId;
       }));
       const recipients = checked.filter((id) => typeof id === 'string');
-      if (!recipients.length) return json({ sent: 0 }, 200, headers);
+      if (!recipients.length) {
+        console.info('Push dispatch skipped: all recipients are blocked', { chatId });
+        return json({ sent: 0, reason: 'all_recipients_blocked' }, 200, headers);
+      }
 
       const rows = await queryTokens(accessToken, recipients);
       const tokens = Array.from(new Set(rows
         .filter((row) => recipients.includes(stringField(row.document, 'userId')))
         .map((row) => stringField(row.document, 'token'))
         .filter(Boolean)));
-      if (!tokens.length) return json({ sent: 0 }, 200, headers);
+      if (!tokens.length) {
+        console.warn('Push dispatch skipped: no registered recipient tokens', {
+          chatId,
+          recipientCount: recipients.length,
+        });
+        return json({ sent: 0, reason: 'no_recipient_push_tokens', recipientCount: recipients.length }, 200, headers);
+      }
 
       const claim = await claimOnce(accessToken, chatId, messageId, senderId);
       if (!claim.ok) return json({ sent: 0, duplicate: true }, 200, headers);
@@ -326,15 +353,26 @@ export default {
         try {
           return await sendFcm(accessToken, token, body, chatId);
         } catch {
-          return false;
+          return { ok: false, httpStatus: 0, fcmStatus: 'NETWORK_ERROR', fcmMessage: '' };
         }
       }));
-      const sent = results.filter(Boolean).length;
+      const sent = results.filter((result) => result.ok).length;
+      const failedResults = results.filter((result) => !result.ok);
+      if (failedResults.length) {
+        console.warn('FCM rejected one or more push deliveries', {
+          chatId,
+          tokenCount: tokens.length,
+          sent,
+          failed: failedResults.length,
+          failures: failedResults.map(({ httpStatus, fcmStatus }) => ({ httpStatus, fcmStatus })),
+        });
+      }
       if (!sent) {
         await releaseClaim(accessToken, claim.id);
         throw new WorkerError(503, 'Firebase Cloud Messaging rejected the notification');
       }
-      return json({ sent, failed: results.length - sent }, 200, headers);
+      console.info('FCM push dispatch completed', { chatId, tokenCount: tokens.length, sent, failed: failedResults.length });
+      return json({ sent, failed: failedResults.length }, 200, headers);
     } catch (error) {
       const status = error instanceof WorkerError ? error.status : 500;
       console.error('Bratva push worker request failed', {

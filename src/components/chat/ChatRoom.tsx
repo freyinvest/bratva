@@ -304,7 +304,7 @@ export const ChatRoom: React.FC = () => {
     if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
   }, []);
 
-  const emojis = ['😀', '🔥', '🤝', '👍', '🥊', '💪', '🚀', '❤️', '😂', '💯', '👑', '😎', '⚡', '💣'];
+  const emojis = ['😀', '🔥', '🤝', '👍', '🥊', '💪', '🚀', '❤️', '😂', '💯', '👑', '😎', '⚡', '💣', '🐸', '😈', '🤡', '🍻'];
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-slate-950 text-slate-100 relative">
