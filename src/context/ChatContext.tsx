@@ -206,7 +206,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const activeChatIdRef = useRef<string | null>(activeChatId);
+  const activeChatParticipantsRef = useRef<string[]>([]);
+  const chatParticipantsByIdRef = useRef<Map<string, string[]>>(new Map());
   useEffect(() => { activeChatIdRef.current = activeChatId; }, [activeChatId]);
+  useEffect(() => {
+    chatParticipantsByIdRef.current = new Map(chats.map((chat) => [chat.id, chat.participants]));
+  }, [chats]);
   const [activeTab, setActiveTab] = useState<AppTab>('chats');
   const [callState, setCallState] = useState<CallState | null>(null);
   const [localCallStream, setLocalCallStream] = useState<MediaStream | null>(null);
@@ -481,6 +486,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
               .catch((error) => console.warn('Не удалось сбросить счётчик открытого чата:', error));
           }
         }
+        // Read receipts are persisted to Firestore, not just held in local state.
+        // A canonical direct chat may display messages from older chat IDs for the
+        // same two participants, so treat those legacy streams as the open chat too.
+        const activeParticipants = activeChatParticipantsRef.current;
+        const subscribedParticipants = chatParticipantsByIdRef.current.get(chatId) || [];
+        const isOpenConversation = activeChatIdRef.current === chatId || (
+          activeParticipants.length === 2 &&
+          subscribedParticipants.length === 2 &&
+          activeParticipants.every((id) => subscribedParticipants.includes(id))
+        );
+        if (isOpenConversation && document.visibilityState !== 'hidden') {
+          const unreadIncoming = snapshot.docs.filter((item) => {
+            const data = item.data();
+            return data.senderId !== currentUserId && data.isRead !== true;
+          });
+          for (let offset = 0; offset < unreadIncoming.length; offset += 450) {
+            const batch = writeBatch(db);
+            unreadIncoming.slice(offset, offset + 450).forEach((item) => {
+              batch.update(item.ref, { isRead: true });
+            });
+            void batch.commit().catch((error) => {
+              console.warn('Не удалось сохранить статус прочтения. Проверьте правило update для chats/{chatId}/messages/{messageId}:', error);
+            });
+          }
+          void updateDoc(doc(db, 'chats', chatId), { ['unreadCounts.' + currentUserId]: 0 })
+            .catch((error) => console.warn('Не удалось сбросить счётчик открытого чата:', error));
+        }
+
         const remoteMessages: Message[] = snapshot.docs.map((item) => {
           const data = item.data();
           return {
@@ -648,6 +681,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const activeChat = chats.find((chat) => chat.id === activeChatId) || null;
 
+  useEffect(() => {
+    activeChatParticipantsRef.current = activeChat?.type === 'direct'
+      ? Array.from(new Set(activeChat.participants.filter(Boolean))).sort()
+      : [];
+  }, [activeChatId, activeChat?.type, activeChat?.participants.join('|')]);
+
   // Keep incoming friend requests synced across signed-in devices.
   useEffect(() => {
     if (!currentUserId) {
@@ -712,14 +751,40 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const markChatAsRead = (chatId: string) => {
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === chatId ? { ...chat, unreadCount: 0 } : chat
-      )
-    );
-    if (currentUserId) {
-      void updateDoc(doc(db, 'chats', chatId), { [`unreadCounts.${currentUserId}`]: 0 })
+    const selectedChat = chats.find((chat) => chat.id === chatId);
+    const relatedChatIds = selectedChat?.type === 'direct'
+      ? chats.filter((chat) =>
+          chat.type === 'direct' &&
+          chat.participants.length === selectedChat.participants.length &&
+          chat.participants.every((participantId) => selectedChat.participants.includes(participantId))
+        ).map((chat) => chat.id)
+      : [chatId];
+    const idsToMark = new Set([chatId, ...relatedChatIds]);
+
+    setChats((previous) => previous.map((chat) =>
+      idsToMark.has(chat.id) ? { ...chat, unreadCount: 0 } : chat
+    ));
+
+    if (!currentUserId) return;
+
+    for (const id of idsToMark) {
+      void updateDoc(doc(db, 'chats', id), { ['unreadCounts.' + currentUserId]: 0 })
         .catch((error) => console.warn('Не удалось сбросить счётчик непрочитанных:', error));
+    }
+
+    const unreadMessages = messages.filter((message) =>
+      idsToMark.has(message.chatId) &&
+      message.senderId !== currentUserId &&
+      !message.isRead
+    );
+    for (let offset = 0; offset < unreadMessages.length; offset += 450) {
+      const batch = writeBatch(db);
+      unreadMessages.slice(offset, offset + 450).forEach((message) => {
+        batch.update(doc(db, 'chats', message.chatId, 'messages', message.id), { isRead: true });
+      });
+      void batch.commit().catch((error) => {
+        console.warn('Не удалось отметить сообщения прочитанными. Проверьте правило update для chats/{chatId}/messages/{messageId}:', error);
+      });
     }
   };
 
