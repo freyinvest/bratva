@@ -29,6 +29,7 @@ export const ChatList: React.FC = () => {
     muteChat,
     deleteChat,
     markChatAsRead,
+    startDirectChat,
     allUsers,
     setIsAuthModalOpen
   } = useChat();
@@ -46,8 +47,35 @@ export const ChatList: React.FC = () => {
     setNotificationPermission(permission);
   };
 
+  // Collapse duplicate legacy direct chats into one visible row per participant pair.
+  const uniqueChats = chats.reduce((result, chat) => {
+    if (chat.type !== 'direct' || chat.participants.filter(Boolean).length !== 2) {
+      if (!result.some((item) => item.id === chat.id)) result.push(chat);
+      return result;
+    }
+    const participantIds = Array.from(new Set(chat.participants.filter(Boolean))).sort();
+    const existingIndex = result.findIndex((item) =>
+      item.type === 'direct' &&
+      item.participants.length === 2 &&
+      JSON.stringify(Array.from(new Set(item.participants.filter(Boolean))).sort()) === JSON.stringify(participantIds)
+    );
+    if (existingIndex < 0) {
+      result.push(chat);
+      return result;
+    }
+    const existing = result[existingIndex];
+    const canonicalId = 'direct-' + participantIds.join('-');
+    if (chat.id === canonicalId && existing.id !== canonicalId) {
+      result[existingIndex] = chat;
+    } else if (existing.id !== canonicalId && chat.id !== canonicalId &&
+      (chat.updatedAtMs || 0) > (existing.updatedAtMs || 0)) {
+      result[existingIndex] = chat;
+    }
+    return result;
+  }, [] as typeof chats);
+
   // Filter chats
-  const filteredChats = chats
+  const filteredChats = uniqueChats
     .filter(chat => {
       // search query filter
       if (searchQuery.trim()) {
@@ -71,6 +99,16 @@ export const ChatList: React.FC = () => {
     });
 
   const handleSelectChat = (chatId: string) => {
+    const selectedChat = chats.find((chat) => chat.id === chatId);
+    if (selectedChat?.type === 'direct') {
+      const peerId = selectedChat.participants.find((id) => id && id !== currentUser.id);
+      const peer = allUsers.find((user) => user.id === peerId);
+      if (peerId && peer) {
+        // Opens or migrates a direct conversation onto the stable shared ID.
+        const sharedChatId = startDirectChat(peerId, peer);
+        if (sharedChatId) return;
+      }
+    }
     setActiveChatId(chatId);
     markChatAsRead(chatId);
   };
