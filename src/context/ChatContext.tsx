@@ -423,7 +423,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
           incomingChanges.forEach((change) => {
             const data = change.doc.data();
             if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-            if (document.visibilityState !== 'hidden' && activeChatIdRef.current === chatId) return;
+            // Hidden/minimized tabs rely on FCM + the service worker, avoiding duplicates.
+            if (document.visibilityState === 'hidden') return;
+            if (activeChatIdRef.current === chatId) return;
             const body = typeof data.text === 'string' && data.text.trim()
               ? data.text
               : data.imageUrl ? '📷 Фотография' : data.voiceUrl ? '🎤 Голосовое сообщение' : 'Новое сообщение';
