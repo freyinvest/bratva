@@ -106,7 +106,11 @@ export const ChatList: React.FC = () => {
       if (peerId && peer) {
         // Opens or migrates a direct conversation onto the stable shared ID.
         const sharedChatId = startDirectChat(peerId, peer);
-        if (sharedChatId) return;
+        if (sharedChatId) {
+          markChatAsRead(chatId);
+          if (sharedChatId !== chatId) markChatAsRead(sharedChatId);
+          return;
+        }
       }
     }
     setActiveChatId(chatId);
