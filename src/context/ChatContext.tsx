@@ -18,7 +18,7 @@ import {
 } from '../data/mockData';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy, increment, deleteDoc } from 'firebase/firestore';
+import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy, increment, deleteDoc, writeBatch } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
 import { notifyPushWorkerForMessage } from '../services/pushNotifications';
 
@@ -460,6 +460,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
             attachmentName: typeof data.attachmentName === 'string' ? data.attachmentName : undefined,
             attachmentType: typeof data.attachmentType === 'string' ? data.attachmentType : undefined,
             timestamp: typeof data.timestamp === 'string' ? data.timestamp : '',
+            createdAtMs: typeof data.createdAtMs === 'number'
+              ? data.createdAtMs
+              : typeof data.createdAt?.toMillis === 'function' ? data.createdAt.toMillis() : undefined,
             isRead: Boolean(data.isRead),
             replyToMessage: data.replyToMessage as Message['replyToMessage'],
             reactions: data.reactions && typeof data.reactions === 'object' ? data.reactions as Message['reactions'] : {},
@@ -701,8 +704,38 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     setMessageError(null);
 
     const sender = allUsers.find((user) => user.id === currentUserId);
-    const chat = chats.find((item) => item.id === chatId);
-    if (!sender || !chat) return;
+    let chat = chats.find((item) => item.id === chatId);
+    if (!sender || !chat) {
+      setMessageError('Не удалось определить чат или отправителя. Обновите страницу и попробуйте снова.');
+      return;
+    }
+
+    // A legacy direct chat may have been created locally with a different ID
+    // on each device. Always route direct messages through the stable shared ID.
+    let effectiveChatId = chatId;
+    if (chat.type === 'direct') {
+      const participants = Array.from(new Set(chat.participants.filter(Boolean))).sort();
+      if (participants.length === 2 && participants.includes(currentUserId)) {
+        const canonicalId = 'direct-' + participants.join('-');
+        const canonicalExisting = chats.find((item) => item.id === canonicalId);
+        const peerId = participants.find((id) => id !== currentUserId);
+        const peer = allUsers.find((user) => user.id === peerId);
+        const canonicalChat: Chat = {
+          ...(canonicalExisting || chat),
+          id: canonicalId,
+          type: 'direct',
+          title: peer?.name || canonicalExisting?.title || chat.title || 'Чат',
+          avatar: peer?.avatar || canonicalExisting?.avatar || chat.avatar || '',
+          participants,
+        };
+        chat = canonicalChat;
+        effectiveChatId = canonicalId;
+        setChats((previous) => previous.some((item) => item.id === canonicalId)
+          ? previous.map((item) => item.id === canonicalId ? canonicalChat : item)
+          : [canonicalChat, ...previous]);
+        if (activeChatIdRef.current !== canonicalId) setActiveChatId(canonicalId);
+      }
+    }
 
     const now = new Date();
     const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
@@ -710,8 +743,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
     const newMsg: Message = {
       id: messageId,
-      chatId,
+      chatId: effectiveChatId,
       senderId: sender.id,
+      createdAtMs: now.getTime(),
       ...(text?.trim() ? { text: text.trim() } : {}),
       ...(imageUrl ? { imageUrl } : {}),
       ...(voiceUrl ? { voiceUrl, voiceDuration: Math.max(1, Math.round(voiceDuration || 1)) } : {}),
@@ -723,11 +757,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     sounds.playSend();
-    setMessages((prev) => [...prev, newMsg]);
+    setMessages((previous) => [...previous, newMsg]);
 
     const previewText = imageUrl ? '📷 Фотография' : voiceUrl ? '🎤 Голосовое сообщение' : attachment ? '📎 ' + attachment.name : text?.trim() || '';
     const updatedChat: Chat = {
       ...chat,
+      id: effectiveChatId,
       updatedAt: timeStr,
       updatedAtMs: now.getTime(),
       lastMessage: {
@@ -737,12 +772,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
         isRead: false,
       },
     };
-    setChats((prev) => prev.map((item) => item.id === chatId ? updatedChat : item));
+    setChats((previous) => previous.map((item) => item.id === effectiveChatId ? updatedChat : item));
 
-    // Persist a clean chat document first (Firestore rejects undefined values),
-    // then write the message to the shared subcollection.
+    // First ensure the canonical chat document exists. Do not change its lastMessage
+    // until the actual message and preview can be committed together.
     const chatPayload: Record<string, unknown> = {
-      id: chat.id,
+      id: effectiveChatId,
       type: chat.type,
       title: chat.title || '',
       avatar: chat.avatar || '',
@@ -750,20 +785,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       unreadCount: chat.unreadCount || 0,
       isPinned: Boolean(chat.isPinned),
       isMuted: Boolean(chat.isMuted),
-      updatedAt: timeStr,
-      updatedAtMs: now.getTime(),
-      lastMessage: updatedChat.lastMessage,
     };
     if (chat.creatorId) chatPayload.creatorId = chat.creatorId;
     if (chat.description) chatPayload.description = chat.description;
 
     const remoteMessage: Record<string, unknown> = {
       id: messageId,
-      chatId,
+      chatId: effectiveChatId,
       senderId: sender.id,
       timestamp: timeStr,
-      isRead: false,
       createdAt: serverTimestamp(),
+      createdAtMs: now.getTime(),
+      isRead: false,
       reactions: {},
     };
     if (text?.trim()) remoteMessage.text = text.trim();
@@ -781,28 +814,39 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
     void (async () => {
       try {
-        // Make sure the shared conversation exists before writing its first message.
-        await setDoc(doc(db, 'chats', chatId), chatPayload, { merge: true });
+        const chatRef = doc(db, 'chats', effectiveChatId);
+        await setDoc(chatRef, chatPayload, { merge: true });
+
         const unreadUpdates: Record<string, unknown> = { updatedAtMs: now.getTime() };
-        chat.participants.filter((participantId) => participantId && participantId !== sender.id).forEach((participantId) => {
-          unreadUpdates[`unreadCounts.${participantId}`] = increment(1);
-        });
+        chat.participants
+          .filter((participantId) => participantId && participantId !== sender.id)
+          .forEach((participantId) => {
+            unreadUpdates['unreadCounts.' + participantId] = increment(1);
+          });
         try {
-          // Update unread counts before adding the message so an actively open recipient chat
-          // can immediately reset its own counter when the message snapshot arrives.
-          await updateDoc(doc(db, 'chats', chatId), unreadUpdates);
+          await updateDoc(chatRef, unreadUpdates);
         } catch (unreadError) {
           console.warn('Не удалось обновить счётчик непрочитанных:', unreadError);
         }
-        await setDoc(doc(db, 'chats', chatId, 'messages', messageId), remoteMessage);
-        void notifyPushWorkerForMessage(chatId, messageId).catch((error) => {
+
+        // The message record and latest-message preview now succeed or fail together.
+        const batch = writeBatch(db);
+        batch.set(chatRef, {
+          updatedAt: timeStr,
+          updatedAtMs: now.getTime(),
+          lastMessage: updatedChat.lastMessage,
+        }, { merge: true });
+        batch.set(doc(db, 'chats', effectiveChatId, 'messages', messageId), remoteMessage);
+        await batch.commit();
+
+        void notifyPushWorkerForMessage(effectiveChatId, messageId).catch((error) => {
           // Push delivery is best-effort: never undo a message already saved in Firebase.
           console.warn('Не удалось передать push-уведомление в Cloudflare Worker:', error);
         });
       } catch (error) {
         console.error('Не удалось сохранить сообщение в Firebase:', error);
         setMessages((previous) => previous.filter((message) => message.id !== messageId));
-        setChats((previous) => previous.map((item) => item.id === chatId ? chat : item));
+        setChats((previous) => previous.map((item) => item.id === effectiveChatId ? chat : item));
         const firebaseCode = typeof error === 'object' && error !== null && 'code' in error
           ? String((error as { code?: unknown }).code || '')
           : '';
@@ -917,9 +961,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!targetUser || !creator) return '';
     setAllUsers((previous) => previous.some((user) => user.id === targetUser.id) ? previous : [...previous, targetUser]);
 
-    // A stable ID makes both accounts open the exact same direct conversation.
+    // Prefer the canonical shared document; legacy chats may have device-specific IDs.
     const sharedChatId = 'direct-' + [currentUserId, targetUserId].sort().join('-');
     const existing = chats.find((chat) =>
+      chat.type === 'direct' &&
+      chat.id === sharedChatId &&
+      chat.participants.includes(currentUserId) &&
+      chat.participants.includes(targetUserId)
+    ) || chats.find((chat) =>
       chat.type === 'direct' &&
       chat.participants.includes(currentUserId) &&
       chat.participants.includes(targetUserId)
@@ -933,7 +982,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       title: targetUser.name,
       avatar: targetUser.avatar || '',
       participants: [currentUserId, targetUserId].sort(),
-      unreadCount: existing?.unreadCount || 0,
+      unreadCount: 0,
       isPinned: existing?.isPinned || false,
       ...(existing?.isMuted !== undefined ? { isMuted: existing.isMuted } : {}),
       updatedAt: existing?.updatedAt || timeStr,
@@ -944,15 +993,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
     setChats((previous) => [
       chat,
-      ...previous.filter((item) => item.id !== sharedChatId &&
-        !(item.type === 'direct' && item.participants.includes(currentUserId) && item.participants.includes(targetUserId))),
+      ...previous.filter((item) => item.id !== sharedChatId),
     ]);
-    setMessages((previous) => previous.map((message) =>
-      existing && message.chatId === existing.id ? { ...message, chatId: sharedChatId } : message
-    ));
     setActiveChatId(sharedChatId);
     setActiveTab('chats');
+
     void setDoc(doc(db, 'chats', sharedChatId), chat, { merge: true })
+      .then(() => updateDoc(doc(db, 'chats', sharedChatId), {
+        unreadCount: 0,
+        ['unreadCounts.' + currentUserId]: 0,
+      }))
       .catch((error) => console.error('Не удалось создать общий личный чат:', error));
     return sharedChatId;
   };
