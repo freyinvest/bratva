@@ -1,3 +1,19 @@
+/* Handle notification clicks before importing Firebase Messaging so FCM does not replace this handler. */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+  event.waitUntil((async () => {
+    const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clientsList) {
+      if ('focus' in client) {
+        await client.focus();
+        return;
+      }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(target);
+  })());
+});
+
 /* Firebase Cloud Messaging background handler for «Братва». */
 importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js');
@@ -28,17 +44,4 @@ messaging.onBackgroundMessage((payload) => {
   });
 });
 
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const target = event.notification.data?.url || '/';
-  event.waitUntil((async () => {
-    const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const client of clientsList) {
-      if ('focus' in client) {
-        await client.focus();
-        return;
-      }
-    }
-    if (self.clients.openWindow) await self.clients.openWindow(target);
-  })());
-});
+
