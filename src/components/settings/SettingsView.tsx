@@ -43,24 +43,35 @@ export const SettingsView: React.FC = () => {
     setPushStatus('');
   }, [pushPreferenceKey]);
 
-  const handlePushToggle = async () => {
+  const handlePushEnable = async () => {
     if (pushBusy || !pushPreferenceKey) return;
     setPushBusy(true);
     setPushStatus('');
     try {
-      if (pushEnabled) {
-        await disablePushNotifications(currentUser.id);
-        localStorage.setItem(pushPreferenceKey, 'false');
-        setPushEnabled(false);
-        setPushStatus('Push-уведомления отключены на этом устройстве.');
-      } else {
-        await enablePushNotifications(currentUser.id);
-        localStorage.setItem(pushPreferenceKey, 'true');
-        setPushEnabled(true);
-        setPushStatus('Уведомления разрешены. Теперь новые сообщения могут приходить, даже когда вкладка закрыта.');
-      }
+      // Idempotently obtain the current browser's FCM token and write it to
+      // this account's own pushTokens document, even if the UI said "enabled".
+      await enablePushNotifications(currentUser.id);
+      localStorage.setItem(pushPreferenceKey, 'true');
+      setPushEnabled(true);
+      setPushStatus('Push-токен зарегистрирован или обновлён для этого аккаунта и браузера. Отправьте новое сообщение, чтобы проверить доставку.');
     } catch (error) {
       setPushStatus(error instanceof Error ? error.message : 'Не удалось настроить push-уведомления.');
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const handlePushDisable = async () => {
+    if (pushBusy || !pushPreferenceKey) return;
+    setPushBusy(true);
+    setPushStatus('');
+    try {
+      await disablePushNotifications(currentUser.id);
+      localStorage.setItem(pushPreferenceKey, 'false');
+      setPushEnabled(false);
+      setPushStatus('Push-уведомления отключены на этом устройстве.');
+    } catch (error) {
+      setPushStatus(error instanceof Error ? error.message : 'Не удалось отключить push-уведомления.');
     } finally {
       setPushBusy(false);
     }
@@ -238,10 +249,18 @@ export const SettingsView: React.FC = () => {
                 <p className="text-xs font-bold text-white">Push-уведомления</p>
                 <p className="text-[11px] text-slate-400">Новые сообщения, когда Братва работает в фоне или закрыта</p>
               </div>
-              <button type="button" disabled={pushBusy || !currentUser.id} onClick={handlePushToggle}
-                className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold disabled:opacity-50 ${pushEnabled ? 'bg-slate-700 text-white' : 'bg-emerald-500 text-slate-950'}`}>
-                {pushBusy ? 'Подождите…' : pushEnabled ? 'Отключить' : 'Включить'}
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button type="button" disabled={pushBusy || !currentUser.id} onClick={handlePushEnable}
+                  className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950 disabled:opacity-50">
+                  {pushBusy ? 'Подождите…' : pushEnabled ? 'Обновить регистрацию' : 'Включить'}
+                </button>
+                {pushEnabled && (
+                  <button type="button" disabled={pushBusy || !currentUser.id} onClick={handlePushDisable}
+                    className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold bg-slate-700 text-white disabled:opacity-50">
+                    Отключить
+                  </button>
+                )}
+              </div>
             </div>
             {pushStatus && <p role="status" className="text-[11px] text-slate-300 break-words">{pushStatus}</p>}
           </div>
