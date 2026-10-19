@@ -5,6 +5,55 @@ import { app, auth, db } from '../lib/firebase';
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 const PUSH_WORKER_URL = 'https://bratva.vototene997.workers.dev';
 
+
+async function registerAppServiceWorker(): Promise<ServiceWorkerRegistration> {
+  const expectedScriptUrl = new URL('/sw.js', window.location.origin).href;
+  const registration = await navigator.serviceWorker.register('/sw.js', {
+    updateViaCache: 'none',
+  });
+
+  const isReady = () =>
+    registration.active?.scriptURL === expectedScriptUrl &&
+    registration.active.state === 'activated';
+
+  if (!isReady()) {
+    await new Promise<void>((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        cleanup();
+        reject(new Error('Service Worker не активировался. Обновите страницу и попробуйте снова.'));
+      }, 15000);
+
+      const check = () => {
+        if (!isReady()) return;
+        cleanup();
+        resolve();
+      };
+      const watch = (worker: ServiceWorker | null) => {
+        worker?.addEventListener('statechange', check);
+      };
+      const cleanup = () => {
+        window.clearTimeout(timeoutId);
+        registration.removeEventListener('updatefound', onUpdateFound);
+        registration.installing?.removeEventListener('statechange', check);
+        registration.waiting?.removeEventListener('statechange', check);
+        registration.active?.removeEventListener('statechange', check);
+      };
+      const onUpdateFound = () => {
+        watch(registration.installing);
+        check();
+      };
+
+      registration.addEventListener('updatefound', onUpdateFound);
+      watch(registration.installing);
+      watch(registration.waiting);
+      watch(registration.active);
+      check();
+    });
+  }
+
+  return registration;
+}
+
 function deviceId() {
   const key = 'bratva_push_device_id';
   let id = localStorage.getItem(key);
@@ -28,7 +77,9 @@ export async function enablePushNotifications(userId: string): Promise<void> {
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') throw new Error('Разрешите уведомления в настройках браузера.');
 
-  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  // The Firebase handler is imported by the generated PWA /sw.js.
+  // Never register /firebase-messaging-sw.js separately at the same '/' scope.
+  const registration = await registerAppServiceWorker();
   const messaging = getMessaging(app);
   const token = await getToken(messaging, {
     vapidKey: VAPID_KEY,
