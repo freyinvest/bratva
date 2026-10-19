@@ -964,18 +964,28 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const requestId = currentUserId + '_' + targetUserId;
     const requestRef = doc(db, 'friendRequests', requestId);
-    const existing = await getDoc(requestRef);
-    if (existing.exists()) {
-      const status = existing.data().status;
-      if (status === 'pending' || status === 'accepted') return;
-    }
 
-    await setDoc(requestRef, {
-      fromUserId: currentUserId,
-      toUserId: targetUserId,
-      status: 'pending',
-      createdAt: serverTimestamp(),
-    });
+    // Avoid reading the request document before writing it. Firestore rules can
+    // allow the sender to create an outgoing request while denying reads of a
+    // not-yet-existing document, causing permission-denied before setDoc runs.
+    try {
+      await setDoc(requestRef, {
+        fromUserId: currentUserId,
+        toUserId: targetUserId,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      const code = typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code || '')
+        : '';
+      if (code === 'permission-denied') {
+        throw new Error(
+          'Firebase Rules запретили сохранить заявку. Если ошибка останется, нужно проверить правило create/update для friendRequests в Firebase Console.',
+        );
+      }
+      throw error;
+    }
   };
 
   const saveContactRelation = async (targetUser: User, status: 'removed' | 'blocked') => {
