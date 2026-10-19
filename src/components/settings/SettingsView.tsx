@@ -31,21 +31,31 @@ export const SettingsView: React.FC = () => {
   const [cacheCleared, setCacheCleared] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushStatus, setPushStatus] = useState('');
-  const [pushEnabled, setPushEnabled] = useState(() => localStorage.getItem('bratva_push_enabled') === 'true');
+  const pushPreferenceKey = currentUser.id ? `bratva_push_enabled_${currentUser.id}` : '';
+  const [pushEnabled, setPushEnabled] = useState(false);
+
+  // Push permission is per browser/account. Never reuse another signed-in
+  // account's local toggle state.
+  useEffect(() => {
+    setPushEnabled(pushPreferenceKey
+      ? localStorage.getItem(pushPreferenceKey) === 'true'
+      : false);
+    setPushStatus('');
+  }, [pushPreferenceKey]);
 
   const handlePushToggle = async () => {
-    if (pushBusy) return;
+    if (pushBusy || !pushPreferenceKey) return;
     setPushBusy(true);
     setPushStatus('');
     try {
       if (pushEnabled) {
         await disablePushNotifications(currentUser.id);
-        localStorage.setItem('bratva_push_enabled', 'false');
+        localStorage.setItem(pushPreferenceKey, 'false');
         setPushEnabled(false);
         setPushStatus('Push-уведомления отключены на этом устройстве.');
       } else {
         await enablePushNotifications(currentUser.id);
-        localStorage.setItem('bratva_push_enabled', 'true');
+        localStorage.setItem(pushPreferenceKey, 'true');
         setPushEnabled(true);
         setPushStatus('Уведомления разрешены. Теперь новые сообщения могут приходить, даже когда вкладка закрыта.');
       }
