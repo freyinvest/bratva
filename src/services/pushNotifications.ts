@@ -154,9 +154,11 @@ export async function notifyPushWorkerForMessage(
   const payload = await response.json().catch(() => null) as {
     sent?: unknown;
     failed?: unknown;
+    tokenCount?: unknown;
     duplicate?: unknown;
     reason?: unknown;
     recipientCount?: unknown;
+    failureDetails?: Array<{ httpStatus?: unknown; fcmStatus?: unknown }>;
     error?: unknown;
   } | null;
   if (!response.ok || !payload || typeof payload.sent !== 'number') {
@@ -164,12 +166,21 @@ export async function notifyPushWorkerForMessage(
       ? payload.error
       : `Cloudflare Worker не подтвердил отправку уведомления (${response.status}).`);
   }
-  if (payload.sent === 0 && payload.duplicate !== true) {
-    console.warn('Bratva push diagnostic: Worker processed message but sent no notifications.', {
-      reason: payload.reason || 'no_successful_delivery',
-      recipientCount: payload.recipientCount,
-      failed: payload.failed,
-    });
+  const diagnostics = {
+    chatId,
+    sent: payload.sent,
+    failed: payload.failed,
+    tokenCount: payload.tokenCount,
+    recipientCount: payload.recipientCount,
+    reason: payload.reason,
+    failureDetails: payload.failureDetails,
+  };
+  if (payload.duplicate === true) {
+    console.info('Bratva push dispatch skipped as duplicate.', { chatId });
+  } else if (payload.sent === 0 || (typeof payload.failed === 'number' && payload.failed > 0)) {
+    console.warn('Bratva push dispatch needs attention.', diagnostics);
+  } else {
+    console.info('Bratva push dispatch accepted by FCM.', diagnostics);
   }
 }
 
