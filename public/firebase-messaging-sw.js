@@ -1,3 +1,16 @@
+/* Version handshake lets the page verify that the active root-scope worker loaded this FCM handler. */
+const BRATVA_PUSH_SW_VERSION = 'bratva-push-2026-10-19-1';
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'BRATVA_PUSH_SW_PING') return;
+  const port = event.ports && event.ports[0];
+  if (port) {
+    port.postMessage({
+      type: 'BRATVA_PUSH_SW_READY',
+      version: BRATVA_PUSH_SW_VERSION,
+    });
+  }
+});
+
 /* Handle notification clicks before importing Firebase Messaging so FCM does not replace this handler. */
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

@@ -4,7 +4,40 @@ import { app, auth, db } from '../lib/firebase';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 const PUSH_WORKER_URL = 'https://bratva.vototene997.workers.dev';
+const PUSH_SW_VERSION = 'bratva-push-2026-10-19-1';
 
+
+async function hasExpectedPushWorkerVersion(
+  registration: ServiceWorkerRegistration,
+): Promise<boolean> {
+  const worker = registration.active;
+  if (!worker || worker.state !== 'activated') return false;
+
+  return new Promise<boolean>((resolve) => {
+    const channel = new MessageChannel();
+    const timeoutId = window.setTimeout(() => {
+      channel.port1.close();
+      resolve(false);
+    }, 700);
+
+    channel.port1.onmessage = (event: MessageEvent) => {
+      window.clearTimeout(timeoutId);
+      channel.port1.close();
+      resolve(
+        event.data?.type === 'BRATVA_PUSH_SW_READY' &&
+        event.data?.version === PUSH_SW_VERSION,
+      );
+    };
+
+    try {
+      worker.postMessage({ type: 'BRATVA_PUSH_SW_PING' }, [channel.port2]);
+    } catch {
+      window.clearTimeout(timeoutId);
+      channel.port1.close();
+      resolve(false);
+    }
+  });
+}
 
 async function registerAppServiceWorker(): Promise<ServiceWorkerRegistration> {
   const expectedScriptUrl = new URL('/sw.js', window.location.origin).href;
@@ -12,46 +45,30 @@ async function registerAppServiceWorker(): Promise<ServiceWorkerRegistration> {
     updateViaCache: 'none',
   });
 
-  const isReady = () =>
-    registration.active?.scriptURL === expectedScriptUrl &&
-    registration.active.state === 'activated';
+  // Check the deployed script explicitly. An existing activated /sw.js may be
+  // an older version that doesn't import the Firebase Messaging handler.
+  await registration.update();
 
-  if (!isReady()) {
-    await new Promise<void>((resolve, reject) => {
-      const timeoutId = window.setTimeout(() => {
-        cleanup();
-        reject(new Error('Service Worker не активировался. Обновите страницу и попробуйте снова.'));
-      }, 15000);
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    // When an update is waiting, activate it so registration doesn't continue
+    // using an older service worker that lacks the background push handler.
+    registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
 
-      const check = () => {
-        if (!isReady()) return;
-        cleanup();
-        resolve();
-      };
-      const watch = (worker: ServiceWorker | null) => {
-        worker?.addEventListener('statechange', check);
-      };
-      const cleanup = () => {
-        window.clearTimeout(timeoutId);
-        registration.removeEventListener('updatefound', onUpdateFound);
-        registration.installing?.removeEventListener('statechange', check);
-        registration.waiting?.removeEventListener('statechange', check);
-        registration.active?.removeEventListener('statechange', check);
-      };
-      const onUpdateFound = () => {
-        watch(registration.installing);
-        check();
-      };
+    if (
+      registration.active?.scriptURL === expectedScriptUrl &&
+      registration.active.state === 'activated' &&
+      await hasExpectedPushWorkerVersion(registration)
+    ) {
+      return registration;
+    }
 
-      registration.addEventListener('updatefound', onUpdateFound);
-      watch(registration.installing);
-      watch(registration.waiting);
-      watch(registration.active);
-      check();
-    });
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
   }
 
-  return registration;
+  throw new Error(
+    'Фоновый обработчик push не обновился. Закройте другие вкладки Bratva в этом браузере, откройте сайт заново и нажмите «Обновить регистрацию».',
+  );
 }
 
 function deviceId() {
