@@ -18,7 +18,7 @@ export default defineConfig(() => ({
         // Version the imported FCM handler in the generated worker script itself.
         // This forces existing browsers to install a fresh root-scope service worker
         // when the standalone Firebase messaging handler changes.
-        importScripts: ['/firebase-messaging-sw.js?v=bratva-push-2026-10-19-1'],
+        importScripts: ['/firebase-messaging-sw.js?v=bratva-push-2026-10-20-2'],
       },
       manifest: {
         name: 'Братва',
