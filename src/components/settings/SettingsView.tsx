@@ -26,8 +26,8 @@ export const SettingsView: React.FC = () => {
     deviceMode,
     setDeviceMode,
     currentUser,
-    activeChatId,
-    activeChat,
+    chats,
+    allUsers,
   } = useChat();
 
   const [cacheCleared, setCacheCleared] = useState(false);
@@ -35,6 +35,12 @@ export const SettingsView: React.FC = () => {
   const [pushStatus, setPushStatus] = useState('');
   const [pushTestBusy, setPushTestBusy] = useState(false);
   const [pushTestStatus, setPushTestStatus] = useState('');
+  const [selectedTestChatId, setSelectedTestChatId] = useState('');
+  const directChats = chats.filter((chat) =>
+    chat.type === 'direct' &&
+    chat.participants?.includes(currentUser.id) &&
+    chat.participants.filter(Boolean).length === 2
+  );
   const pushPreferenceKey = currentUser.id ? `bratva_push_enabled_${currentUser.id}` : '';
   const [pushEnabled, setPushEnabled] = useState(false);
 
@@ -80,15 +86,21 @@ export const SettingsView: React.FC = () => {
       setPushBusy(false);
     }
   };
+  useEffect(() => {
+    if (!directChats.some((chat) => chat.id === selectedTestChatId)) {
+      setSelectedTestChatId(directChats[0]?.id || '');
+    }
+  }, [chats, currentUser.id, selectedTestChatId]);
+
   const handlePushTest = async () => {
-    if (pushTestBusy || !activeChatId || activeChat?.type !== 'direct') {
-      setPushTestStatus('Откройте личный чат с собеседником, затем перейдите в настройки.');
+    if (pushTestBusy || !selectedTestChatId) {
+      setPushTestStatus('Сначала выберите личный чат с получателем.');
       return;
     }
     setPushTestBusy(true);
     setPushTestStatus('Отправляем диагностическое уведомление на зарегистрированные устройства собеседника…');
     try {
-      const result = await sendPushTestToChat(activeChatId);
+      const result = await sendPushTestToChat(selectedTestChatId);
       if (result.reason === 'recipient_blocked') {
         setPushTestStatus('Тест не отправлен: собеседник заблокировал отправителя.');
       } else if (result.reason === 'no_recipient_push_tokens' || result.tokenCount === 0) {
@@ -299,13 +311,35 @@ export const SettingsView: React.FC = () => {
             <div className="border-t border-slate-800 pt-3 space-y-2">
               <div>
                 <p className="text-xs font-bold text-white">Диагностика доставки</p>
-                <p className="text-[11px] text-slate-400">Отправляет тест только собеседнику из открытого личного чата; реальные сообщения не создаются.</p>
+                <p className="text-[11px] text-slate-400">Выберите собеседника. Тест отправит отдельное уведомление на его зарегистрированные браузеры и не создаст сообщение в чате.</p>
               </div>
-              <button type="button" disabled={pushTestBusy || !currentUser.id || !activeChatId || activeChat?.type !== 'direct'} onClick={handlePushTest}
+              <label className="block space-y-1.5">
+                <span className="text-[11px] text-slate-400">Личный чат / получатель</span>
+                <select
+                  value={selectedTestChatId}
+                  onChange={(event) => {
+                    setSelectedTestChatId(event.target.value);
+                    setPushTestStatus('');
+                  }}
+                  disabled={!directChats.length || pushTestBusy}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs text-white disabled:opacity-50"
+                >
+                  <option value="">Выберите собеседника</option>
+                  {directChats.map((chat) => {
+                    const peerId = chat.participants.find((id) => id !== currentUser.id);
+                    const peer = allUsers.find((user) => user.id === peerId);
+                    const label = [peer?.name || chat.title || 'Личный чат', peer?.nickname]
+                      .filter(Boolean)
+                      .join(' · ');
+                    return <option key={chat.id} value={chat.id}>{label}</option>;
+                  })}
+                </select>
+              </label>
+              <button type="button" disabled={pushTestBusy || !currentUser.id || !selectedTestChatId} onClick={handlePushTest}
                 className="w-full px-3 py-2 rounded-xl text-xs font-bold bg-sky-500/15 border border-sky-500/40 text-sky-200 disabled:opacity-40">
                 {pushTestBusy ? 'Проверяем доставку…' : 'Проверить push собеседнику'}
               </button>
-              {!activeChatId || activeChat?.type !== 'direct' ? <p className="text-[11px] text-slate-500">Сначала откройте личный чат, затем перейдите в настройки, не закрывая выбор чата.</p> : null}
+              {!directChats.length && <p className="text-[11px] text-slate-500">У этого аккаунта пока нет личных чатов. Сначала откройте переписку с собеседником и отправьте или получите сообщение.</p>}
               {pushTestStatus && <p role="status" className="text-[11px] text-slate-300 break-words">{pushTestStatus}</p>}
             </div>
           </div>
