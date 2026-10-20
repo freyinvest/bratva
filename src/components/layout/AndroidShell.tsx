@@ -22,7 +22,8 @@ export const AndroidShell: React.FC = () => {
     setActiveTab,
     chats,
     friendRequests,
-    currentUser
+    currentUser,
+    deviceMode
   } = useChat();
 
   const totalUnread = chats.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
