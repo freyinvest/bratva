@@ -229,11 +229,7 @@ setAuthenticatedUser(profile);
       <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md max-h-[92vh] overflow-y-auto flex flex-col shadow-2xl">
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-md shadow-emerald-500/25">
-              <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center text-emerald-400 font-extrabold text-sm">
-                Б
-              </div>
-            </div>
+            <img src="/bratva-logo.svg" alt="" aria-hidden="true" className="w-9 h-9 shrink-0 rounded-2xl shadow-md shadow-emerald-500/25" />
             <div>
               <h2 className="font-bold text-slate-100 text-base leading-tight">
                 {authMode === 'login' ? 'Вход в «Братву»' : 'Регистрация нового друга'}

@@ -129,13 +129,7 @@ export const ChatList: React.FC = () => {
       {/* Top Messenger Bar */}
       <div className="p-3.5 pb-2 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-indigo-600 p-0.5 shadow-md shadow-emerald-500/20">
-            <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
-              <span className="font-extrabold text-base tracking-tighter bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">
-                Б
-              </span>
-            </div>
-          </div>
+          <img src="/bratva-logo.svg" alt="" aria-hidden="true" className="w-10 h-10 shrink-0 rounded-2xl shadow-md shadow-emerald-500/20" />
           <div>
             <div className="flex items-center gap-1.5">
               <h1 className="font-extrabold text-lg tracking-tight text-white leading-none">

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Братва — знак мессенджера</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101b35"/><stop offset=".55" stop-color="#061326"/><stop offset="1" stop-color="#07101f"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22f2d4"/><stop offset=".52" stop-color="#00d7b4"/><stop offset="1" stop-color="#00a99d"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2=".9" y2="1">
+      <stop offset="0" stop-color="#ffe87a"/><stop offset="1" stop-color="#ffad19"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="13" result="blur"/><feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#00e6c5" flood-opacity=".19"/>
+    </filter>
+  </defs>
+  <rect x="10" y="10" width="492" height="492" rx="126" fill="url(#bg)"/>
+  <rect x="11" y="11" width="490" height="490" rx="125" fill="none" stroke="#365f96" stroke-opacity=".62" stroke-width="2"/>
+  <circle cx="256" cy="256" r="155" fill="#00d9bf" opacity=".07" filter="url(#glow)"/>
+  <g fill="none" stroke="url(#teal)" stroke-width="47" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)">
+    <path d="M207 119 145 155 Q132 163 132 179 V286 Q132 299 143 306 L198 338 272 295 272 258 232 236 185 263"/>
+    <path d="M305 393 367 357 Q380 350 380 334 V227 Q380 214 369 207 L314 175 240 218 240 255 280 277 327 250"/>
+  </g>
+  <path d="M256 230 284 256 256 282 228 256Z" fill="url(#gold)" stroke="#fff1a6" stroke-opacity=".45" stroke-width="2"/>
+</svg>
