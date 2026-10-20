@@ -312,7 +312,7 @@ export default {
       return json({
         ok: true,
         worker: 'bratva-push',
-        version: 'push-chat-self-test-v1',
+        version: 'push-token-cleanup-v2',
         secretsConfigured: Boolean(env.FIREBASE_API_KEY && env.FIREBASE_SERVICE_ACCOUNT_JSON),
       }, 200, { 'Cache-Control': 'no-store' });
     }
