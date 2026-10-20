@@ -133,12 +133,15 @@ export const SettingsView: React.FC = () => {
           const detail = failure.detail ? `: ${failure.detail}` : '';
           return `${code} (HTTP ${failure.httpStatus})${detail}`;
         }).join('; ');
-        const staleHint = (result.staleTokensRemoved || result.failures?.some((failure) =>
+        const staleFailure = result.failures?.some((failure) =>
           failure.fcmErrorCode === 'UNREGISTERED' ||
           (failure.httpStatus === 404 && failure.fcmStatus === 'NOT_FOUND')
-        ))
-          ? ' Устаревшие токены очищены, попросите получателя войти в Братву на проблемном устройстве и нажать «Обновить регистрацию».'
-          : '';
+        );
+        const staleHint = result.staleTokensRemoved
+          ? ` Автоматически удалено записей устаревших токенов: ${result.staleTokensRemoved}. Попросите получателя войти в Братву на проблемном устройстве и нажать «Обновить регистрацию».`
+          : staleFailure
+            ? ' FCM сообщает, что токен недействителен. Попросите получателя войти в Братву на проблемном устройстве и нажать «Обновить регистрацию».'
+            : '';
         setPushTestStatus(`FCM отверг все ${result.tokenCount} токен(а/ов). ${reasons || result.reason || 'См. диагностический результат в консоли браузера.'}${staleHint}`);
       } else if (result.failed > 0) {
         const reasons = result.failures?.map((failure) => {
@@ -146,9 +149,15 @@ export const SettingsView: React.FC = () => {
           const detail = failure.detail ? `: ${failure.detail}` : '';
           return `${code} (HTTP ${failure.httpStatus})${detail}`;
         }).join('; ');
+        const staleFailure = result.failures?.some((failure) =>
+          failure.fcmErrorCode === 'UNREGISTERED' ||
+          (failure.httpStatus === 404 && failure.fcmStatus === 'NOT_FOUND')
+        );
         const staleHint = result.staleTokensRemoved
-          ? ` Удалено устаревших токенов: ${result.staleTokensRemoved}. На устройстве получателя нажмите «Обновить регистрацию».`
-          : '';
+          ? ` Автоматически удалено записей устаревших токенов: ${result.staleTokensRemoved}. На устройстве получателя нажмите «Обновить регистрацию».`
+          : staleFailure
+            ? ' FCM сообщает, что один из токенов недействителен. На устройстве получателя нажмите «Обновить регистрацию».'
+            : '';
         setPushTestStatus(`FCM принял ${result.sent} из ${result.tokenCount} токенов; отклонено: ${result.failed}. ${reasons || ''}${staleHint}`);
       } else {
         setPushTestStatus(`FCM принял отправку на ${result.sent} токен(а/ов) собеседника. Это подтверждает участок Worker → FCM, но не гарантирует показ уведомления браузером. Попросите собеседника проверить, пришло ли оно.`);
@@ -328,12 +337,12 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
           <div className="p-3 bg-slate-950/50 rounded-2xl border border-slate-800/60 space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div>
+            <div className="flex flex-col gap-3">
+              <div className="min-w-0">
                 <p className="text-xs font-bold text-white">Push-уведомления</p>
                 <p className="text-[11px] text-slate-400">Новые сообщения, когда Братва работает в фоне или закрыта</p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button type="button" disabled={pushBusy || !currentUser.id} onClick={handlePushEnable}
                   className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950 disabled:opacity-50">
                   {pushBusy ? 'Подождите…' : pushEnabled ? 'Обновить регистрацию' : 'Включить'}
