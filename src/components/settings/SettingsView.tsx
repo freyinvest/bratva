@@ -328,12 +328,12 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
           <div className="p-3 bg-slate-950/50 rounded-2xl border border-slate-800/60 space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div>
+            <div className="flex flex-col gap-3">
+              <div className="min-w-0">
                 <p className="text-xs font-bold text-white">Push-уведомления</p>
                 <p className="text-[11px] text-slate-400">Новые сообщения, когда Братва работает в фоне или закрыта</p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button type="button" disabled={pushBusy || !currentUser.id} onClick={handlePushEnable}
                   className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950 disabled:opacity-50">
                   {pushBusy ? 'Подождите…' : pushEnabled ? 'Обновить регистрацию' : 'Включить'}
