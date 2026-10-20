@@ -4,7 +4,7 @@ import { app, auth, db } from '../lib/firebase';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 const PUSH_WORKER_URL = 'https://bratva.vototene997.workers.dev';
-const PUSH_SW_VERSION = 'bratva-push-2026-10-19-1';
+const PUSH_SW_VERSION = 'bratva-push-2026-10-20-2';
 
 
 async function hasExpectedPushWorkerVersion(
