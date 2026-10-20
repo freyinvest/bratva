@@ -179,6 +179,45 @@ async function queryTokens(accessToken, recipientIds) {
   return batchesResult.flat();
 }
 
+function isStalePushTokenFailure(result) {
+  return result.fcmErrorCode === 'UNREGISTERED' ||
+    (result.httpStatus === 404 && result.fcmStatus === 'NOT_FOUND');
+}
+
+// Remove only token documents tied to a token that FCM explicitly rejected as
+// unregistered/not found. This lets the receiver register a fresh token later.
+async function removeStalePushTokenDocuments(accessToken, tokenRows, results) {
+  const staleTokens = new Set(results
+    .filter(isStalePushTokenFailure)
+    .map((result) => result.token)
+    .filter(Boolean));
+  if (!staleTokens.size) return 0;
+
+  const documentIds = new Set();
+  for (const row of tokenRows) {
+    if (!row.document || !staleTokens.has(stringField(row.document, 'token'))) continue;
+    const name = row.document.name;
+    const marker = '/documents/pushTokens/';
+    const markerIndex = typeof name === 'string' ? name.indexOf(marker) : -1;
+    if (markerIndex < 0) continue;
+    const id = name.slice(markerIndex + marker.length);
+    if (id && !id.includes('/')) documentIds.add(id);
+  }
+
+  const removed = await Promise.all(Array.from(documentIds).map(async (id) => {
+    try {
+      const response = await fetch(API_ROOT + '/pushTokens/' + encodeURIComponent(id), {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + accessToken },
+      });
+      return response.ok || response.status === 404;
+    } catch {
+      return false;
+    }
+  }));
+  return removed.filter(Boolean).length;
+}
+
 async function claimOnce(accessToken, chatId, messageId, senderId) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(chatId + '/' + messageId));
   const id = Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -252,10 +291,16 @@ async function sendFcm(accessToken, token, body, chatId, title = 'Братва �
   const payload = await response.json().catch(() => ({}));
   if (response.ok) return { ok: true, httpStatus: response.status };
   const fcmError = payload && payload.error ? payload.error : {};
+  const errorDetails = Array.isArray(fcmError.details) ? fcmError.details : [];
+  const typedFcmError = errorDetails.find((detail) =>
+    detail && typeof detail.errorCode === 'string' &&
+    (!detail['@type'] || detail['@type'] === 'type.googleapis.com/google.firebase.fcm.v1.FcmError')
+  );
   return {
     ok: false,
     httpStatus: response.status,
     fcmStatus: typeof fcmError.status === 'string' ? fcmError.status : 'FCM_ERROR',
+    fcmErrorCode: typedFcmError && typeof typedFcmError.errorCode === 'string' ? typedFcmError.errorCode : '',
     fcmMessage: typeof fcmError.message === 'string' ? fcmError.message.slice(0, 180) : '',
   };
 }
@@ -325,8 +370,8 @@ export default {
         }
 
         const rows = await queryTokens(accessToken, [recipientId]);
-        const tokens = Array.from(new Set(rows
-          .filter((row) => stringField(row.document, 'userId') === recipientId)
+        const recipientRows = rows.filter((row) => stringField(row.document, 'userId') === recipientId);
+        const tokens = Array.from(new Set(recipientRows
           .map((row) => stringField(row.document, 'token'))
           .filter(Boolean)));
         if (!tokens.length) {
@@ -337,15 +382,17 @@ export default {
         const testBody = 'Тестовое push-уведомление. Чат и сообщения не изменены.';
         const results = await Promise.all(tokens.map(async (token) => {
           try {
-            return await sendFcm(accessToken, token, testBody, chatId, 'Братва — тест уведомления');
+            return { ...(await sendFcm(accessToken, token, testBody, chatId, 'Братва — тест уведомления')), token };
           } catch {
-            return { ok: false, httpStatus: 0, fcmStatus: 'NETWORK_ERROR', fcmMessage: '' };
+            return { ok: false, httpStatus: 0, fcmStatus: 'NETWORK_ERROR', fcmErrorCode: '', fcmMessage: '', token };
           }
         }));
+        const staleTokensRemoved = await removeStalePushTokenDocuments(accessToken, recipientRows, results);
         const sent = results.filter((result) => result.ok).length;
-        const failures = results.filter((result) => !result.ok).map(({ httpStatus, fcmStatus, fcmMessage }) => ({
+        const failures = results.filter((result) => !result.ok).map(({ httpStatus, fcmStatus, fcmErrorCode, fcmMessage }) => ({
           httpStatus,
           fcmStatus,
+          fcmErrorCode,
           detail: fcmMessage,
         }));
         console.info('FCM push self-test completed', {
@@ -353,7 +400,8 @@ export default {
           tokenCount: tokens.length,
           sent,
           failed: failures.length,
-          failures: failures.map(({ httpStatus, fcmStatus }) => ({ httpStatus, fcmStatus })),
+          staleTokensRemoved,
+          failures: failures.map(({ httpStatus, fcmStatus, fcmErrorCode }) => ({ httpStatus, fcmStatus, fcmErrorCode })),
         });
         return json({
           action: 'testPush',
@@ -361,6 +409,7 @@ export default {
           tokenCount: tokens.length,
           sent,
           failed: failures.length,
+          staleTokensRemoved,
           failures,
           reason: sent === 0 ? 'fcm_rejected' : undefined,
         }, 200, headers);
@@ -391,8 +440,8 @@ export default {
       }
 
       const rows = await queryTokens(accessToken, recipients);
-      const tokens = Array.from(new Set(rows
-        .filter((row) => recipients.includes(stringField(row.document, 'userId')))
+      const recipientRows = rows.filter((row) => recipients.includes(stringField(row.document, 'userId')));
+      const tokens = Array.from(new Set(recipientRows
         .map((row) => stringField(row.document, 'token'))
         .filter(Boolean)));
       if (!tokens.length) {
@@ -409,24 +458,25 @@ export default {
       const body = notificationText(message);
       const results = await Promise.all(tokens.map(async (token) => {
         try {
-          return await sendFcm(accessToken, token, body, chatId);
+          return { ...(await sendFcm(accessToken, token, body, chatId)), token };
         } catch {
-          return { ok: false, httpStatus: 0, fcmStatus: 'NETWORK_ERROR', fcmMessage: '' };
+          return { ok: false, httpStatus: 0, fcmStatus: 'NETWORK_ERROR', fcmErrorCode: '', fcmMessage: '', token };
         }
       }));
       const sent = results.filter((result) => result.ok).length;
       const failedResults = results.filter((result) => !result.ok);
+      const staleTokensRemoved = await removeStalePushTokenDocuments(accessToken, recipientRows, results);
       if (failedResults.length) {
         console.warn('FCM rejected one or more push deliveries', {
           chatId,
           tokenCount: tokens.length,
           sent,
           failed: failedResults.length,
-          failures: failedResults.map(({ httpStatus, fcmStatus }) => ({ httpStatus, fcmStatus })),
+          failures: failedResults.map(({ httpStatus, fcmStatus, fcmErrorCode }) => ({ httpStatus, fcmStatus, fcmErrorCode })),
         });
       }
       if (!sent) await releaseClaim(accessToken, claim.id);
-      const failureDetails = failedResults.map(({ httpStatus, fcmStatus }) => ({ httpStatus, fcmStatus }));
+      const failureDetails = failedResults.map(({ httpStatus, fcmStatus, fcmErrorCode, fcmMessage }) => ({ httpStatus, fcmStatus, fcmErrorCode, detail: fcmMessage }));
       console.info('FCM push dispatch completed', {
         chatId,
         tokenCount: tokens.length,
@@ -441,6 +491,7 @@ export default {
         tokenCount: tokens.length,
         recipientCount: recipients.length,
         failureDetails,
+        staleTokensRemoved,
         reason: sent === 0 ? 'fcm_rejected' : undefined,
       }, 200, headers);
     } catch (error) {
