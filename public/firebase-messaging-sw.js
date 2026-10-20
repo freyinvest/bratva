@@ -1,5 +1,5 @@
 /* Version handshake lets the page verify that the active root-scope worker loaded this FCM handler. */
-const BRATVA_PUSH_SW_VERSION = 'bratva-push-2026-10-19-1';
+const BRATVA_PUSH_SW_VERSION = 'bratva-push-2026-10-20-2';
 self.addEventListener('message', (event) => {
   if (event.data?.type !== 'BRATVA_PUSH_SW_PING') return;
   const port = event.ports && event.ports[0];
