@@ -133,12 +133,15 @@ export const SettingsView: React.FC = () => {
           const detail = failure.detail ? `: ${failure.detail}` : '';
           return `${code} (HTTP ${failure.httpStatus})${detail}`;
         }).join('; ');
-        const staleHint = (result.staleTokensRemoved || result.failures?.some((failure) =>
+        const staleFailure = result.failures?.some((failure) =>
           failure.fcmErrorCode === 'UNREGISTERED' ||
           (failure.httpStatus === 404 && failure.fcmStatus === 'NOT_FOUND')
-        ))
-          ? ' Устаревшие токены очищены, попросите получателя войти в Братву на проблемном устройстве и нажать «Обновить регистрацию».'
-          : '';
+        );
+        const staleHint = result.staleTokensRemoved
+          ? ` Автоматически удалено записей устаревших токенов: ${result.staleTokensRemoved}. Попросите получателя войти в Братву на проблемном устройстве и нажать «Обновить регистрацию».`
+          : staleFailure
+            ? ' FCM сообщает, что токен недействителен. Попросите получателя войти в Братву на проблемном устройстве и нажать «Обновить регистрацию».'
+            : '';
         setPushTestStatus(`FCM отверг все ${result.tokenCount} токен(а/ов). ${reasons || result.reason || 'См. диагностический результат в консоли браузера.'}${staleHint}`);
       } else if (result.failed > 0) {
         const reasons = result.failures?.map((failure) => {
@@ -146,9 +149,15 @@ export const SettingsView: React.FC = () => {
           const detail = failure.detail ? `: ${failure.detail}` : '';
           return `${code} (HTTP ${failure.httpStatus})${detail}`;
         }).join('; ');
+        const staleFailure = result.failures?.some((failure) =>
+          failure.fcmErrorCode === 'UNREGISTERED' ||
+          (failure.httpStatus === 404 && failure.fcmStatus === 'NOT_FOUND')
+        );
         const staleHint = result.staleTokensRemoved
-          ? ` Удалено устаревших токенов: ${result.staleTokensRemoved}. На устройстве получателя нажмите «Обновить регистрацию».`
-          : '';
+          ? ` Автоматически удалено записей устаревших токенов: ${result.staleTokensRemoved}. На устройстве получателя нажмите «Обновить регистрацию».`
+          : staleFailure
+            ? ' FCM сообщает, что один из токенов недействителен. На устройстве получателя нажмите «Обновить регистрацию».'
+            : '';
         setPushTestStatus(`FCM принял ${result.sent} из ${result.tokenCount} токенов; отклонено: ${result.failed}. ${reasons || ''}${staleHint}`);
       } else {
         setPushTestStatus(`FCM принял отправку на ${result.sent} токен(а/ов) собеседника. Это подтверждает участок Worker → FCM, но не гарантирует показ уведомления браузером. Попросите собеседника проверить, пришло ли оно.`);
