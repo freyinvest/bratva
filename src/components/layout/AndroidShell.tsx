@@ -3,9 +3,7 @@ import {
   MessageSquare,
   Users,
   User as UserIcon,
-  Settings,
-  Maximize2,
-  Smartphone
+  Settings
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { ChatList } from '../chat/ChatList';
@@ -24,9 +22,7 @@ export const AndroidShell: React.FC = () => {
     setActiveTab,
     chats,
     friendRequests,
-    currentUser,
-    deviceMode,
-    setDeviceMode
+    currentUser
   } = useChat();
 
   const totalUnread = chats.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
@@ -37,34 +33,6 @@ export const AndroidShell: React.FC = () => {
       {/* Background ambient lighting */}
       <div className="absolute -top-40 -left-40 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-teal-600/10 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Quick Desktop Mode Switcher Bar (visible on md screens) */}
-      <div className="hidden md:flex items-center gap-3 mb-2 z-30 bg-slate-900/80 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-800 text-xs text-slate-300 shadow-md">
-        <span className="font-semibold text-emerald-400">«Братва» Android OS</span>
-        <span className="text-slate-600">•</span>
-        <button
-          onClick={() => setDeviceMode('frame')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium transition-colors ${
-            deviceMode === 'frame'
-              ? 'bg-emerald-500 text-slate-950 font-bold'
-              : 'hover:text-white'
-          }`}
-        >
-          <Smartphone size={13} />
-          Рамка смартфона
-        </button>
-        <button
-          onClick={() => setDeviceMode('fullscreen')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium transition-colors ${
-            deviceMode === 'fullscreen'
-              ? 'bg-emerald-500 text-slate-950 font-bold'
-              : 'hover:text-white'
-          }`}
-        >
-          <Maximize2 size={13} />
-          Во весь экран
-        </button>
-      </div>
 
       {/* Main Container: Android Bezel Phone or Responsive Edge-to-Edge */}
       <div
