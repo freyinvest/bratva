@@ -36,11 +36,33 @@ export const SettingsView: React.FC = () => {
   const [pushTestBusy, setPushTestBusy] = useState(false);
   const [pushTestStatus, setPushTestStatus] = useState('');
   const [selectedTestChatId, setSelectedTestChatId] = useState('');
-  const directChats = chats.filter((chat) =>
-    chat.type === 'direct' &&
-    chat.participants?.includes(currentUser.id) &&
-    chat.participants.filter(Boolean).length === 2
-  );
+  // Legacy data may contain multiple documents for the same pair of users.
+  // Keep one diagnostics option per recipient, preferring the stable canonical
+  // direct-chat ID so the Worker is asked to inspect the canonical conversation.
+  const directChats = Array.from(chats.reduce((byPeer, chat) => {
+    const participants = Array.from(new Set((chat.participants || []).filter(Boolean))).sort();
+    if (chat.type !== 'direct' || !participants.includes(currentUser.id) || participants.length !== 2) {
+      return byPeer;
+    }
+
+    const peerId = participants.find((id) => id !== currentUser.id);
+    if (!peerId) return byPeer;
+
+    const canonicalId = `direct-${participants.join('-')}`;
+    const existing = byPeer.get(peerId);
+    const candidateIsCanonical = chat.id === canonicalId;
+    const existingIsCanonical = existing?.id === canonicalId;
+
+    if (
+      !existing ||
+      (candidateIsCanonical && !existingIsCanonical) ||
+      (candidateIsCanonical === existingIsCanonical &&
+        (chat.updatedAtMs || 0) > (existing.updatedAtMs || 0))
+    ) {
+      byPeer.set(peerId, chat);
+    }
+    return byPeer;
+  }, new Map<string, (typeof chats)[number]>()).values());
   const pushPreferenceKey = currentUser.id ? `bratva_push_enabled_${currentUser.id}` : '';
   const [pushEnabled, setPushEnabled] = useState(false);
 
@@ -106,11 +128,28 @@ export const SettingsView: React.FC = () => {
       } else if (result.reason === 'no_recipient_push_tokens' || result.tokenCount === 0) {
         setPushTestStatus('Worker нашёл собеседника, но в Firestore нет push-токенов его браузеров. Нужно заново зарегистрировать уведомления именно под аккаунтом получателя.');
       } else if (result.sent === 0) {
-        const reasons = result.failures?.map((failure) => `${failure.fcmStatus} (HTTP ${failure.httpStatus})`).join(', ');
-        setPushTestStatus(`FCM отверг все ${result.tokenCount} токен(а/ов). ${reasons || result.reason || 'См. диагностический результат в консоли браузера.'}`);
+        const reasons = result.failures?.map((failure) => {
+          const code = failure.fcmErrorCode || failure.fcmStatus;
+          const detail = failure.detail ? `: ${failure.detail}` : '';
+          return `${code} (HTTP ${failure.httpStatus})${detail}`;
+        }).join('; ');
+        const staleHint = (result.staleTokensRemoved || result.failures?.some((failure) =>
+          failure.fcmErrorCode === 'UNREGISTERED' ||
+          (failure.httpStatus === 404 && failure.fcmStatus === 'NOT_FOUND')
+        ))
+          ? ' Устаревшие токены очищены, попросите получателя войти в Братву на проблемном устройстве и нажать «Обновить регистрацию».'
+          : '';
+        setPushTestStatus(`FCM отверг все ${result.tokenCount} токен(а/ов). ${reasons || result.reason || 'См. диагностический результат в консоли браузера.'}${staleHint}`);
       } else if (result.failed > 0) {
-        const reasons = result.failures?.map((failure) => `${failure.fcmStatus} (HTTP ${failure.httpStatus})`).join(', ');
-        setPushTestStatus(`FCM принял ${result.sent} из ${result.tokenCount} токенов; отклонено: ${result.failed}. ${reasons || ''} Это нужно будет исправить для неработающих браузеров.`);
+        const reasons = result.failures?.map((failure) => {
+          const code = failure.fcmErrorCode || failure.fcmStatus;
+          const detail = failure.detail ? `: ${failure.detail}` : '';
+          return `${code} (HTTP ${failure.httpStatus})${detail}`;
+        }).join('; ');
+        const staleHint = result.staleTokensRemoved
+          ? ` Удалено устаревших токенов: ${result.staleTokensRemoved}. На устройстве получателя нажмите «Обновить регистрацию».`
+          : '';
+        setPushTestStatus(`FCM принял ${result.sent} из ${result.tokenCount} токенов; отклонено: ${result.failed}. ${reasons || ''}${staleHint}`);
       } else {
         setPushTestStatus(`FCM принял отправку на ${result.sent} токен(а/ов) собеседника. Это подтверждает участок Worker → FCM, но не гарантирует показ уведомления браузером. Попросите собеседника проверить, пришло ли оно.`);
       }

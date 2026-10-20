@@ -190,10 +190,12 @@ export interface PushTestResult {
   tokenCount: number;
   sent: number;
   failed: number;
+  staleTokensRemoved?: number;
   reason?: string;
   failures?: Array<{
     httpStatus: number;
     fcmStatus: string;
+    fcmErrorCode?: string;
     detail?: string;
   }>;
 }
