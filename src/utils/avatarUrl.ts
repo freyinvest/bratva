@@ -28,7 +28,7 @@ export function resolveAvatarUrl(value: string | undefined | null): string {
   try {
     const url = new URL(value);
     if (url.hostname !== 'images.unsplash.com') return value;
-    const match = url.pathname.match(/^\\/(photo-[A-Za-z0-9-]+)$/);
+    const match = url.pathname.match(/^\/(photo-[A-Za-z0-9-]+)$/);
     if (!match || !LEGACY_UNSPLASH_PHOTO_IDS.has(match[1])) return value;
     return `${AVATAR_WORKER_URL}/avatars/legacy/${match[1]}.jpg`;
   } catch {
