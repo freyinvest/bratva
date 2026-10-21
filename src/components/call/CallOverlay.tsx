@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Phone, PhoneOff, Mic, MicOff, Volume2, AlertCircle } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
+import { DEFAULT_AVATAR_URL, resolveAvatarUrl } from '../../utils/avatarUrl';
 
 export const CallOverlay: React.FC = () => {
   const {
@@ -83,8 +84,8 @@ export const CallOverlay: React.FC = () => {
             </>
           )}
           <img
-            src={callState.user.avatar || PRESET_AVATARS[0]}
-            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+            src={resolveAvatarUrl(callState.user.avatar || PRESET_AVATARS[0])}
+            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
             alt={callState.user.name}
             className="relative w-36 h-36 rounded-full object-cover border-4 border-emerald-500 shadow-2xl shadow-emerald-500/30"
           />
