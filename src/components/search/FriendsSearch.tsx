@@ -19,7 +19,7 @@ import {
 import { useChat } from '../../context/ChatContext';
 import { User } from '../../types';
 import { PRESET_AVATARS } from '../../data/mockData';
-import { DEFAULT_AVATAR_URL, resolveAvatarUrl } from '../../utils/avatarUrl';
+import { recoverAvatarImage, resolveAvatarUrl } from '../../utils/avatarUrl';
 
 export const FriendsSearch: React.FC = () => {
   const {
@@ -235,7 +235,7 @@ export const FriendsSearch: React.FC = () => {
         {activeTab === 'blocked' ? (
           <div className="space-y-2 pt-1">
             <h3 className="text-xs font-bold text-slate-400 px-1">Заблокированные пользователи</h3>
-            {blockedUsers.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">Список блокировки пуст.</p> : blockedUsers.map((user) => <div key={user.id} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between gap-3"><div className="flex items-center gap-3 min-w-0"><img src={resolveAvatarUrl(user.avatar || PRESET_AVATARS[0])} alt="" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }} className="w-10 h-10 rounded-xl object-cover"/><div className="min-w-0"><p className="text-sm font-bold text-white truncate">{user.name}</p><p className="text-xs text-slate-400 truncate">{user.nickname}</p></div></div><button type="button" onClick={() => unblockContact(user.id)} className="px-3 py-2 rounded-xl bg-slate-800 text-xs text-emerald-400 font-bold flex items-center gap-1"><RotateCcw size={14}/> Разблокировать</button></div>)}
+            {blockedUsers.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">Список блокировки пуст.</p> : blockedUsers.map((user) => <div key={user.id} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between gap-3"><div className="flex items-center gap-3 min-w-0"><img src={resolveAvatarUrl(user.avatar || PRESET_AVATARS[0])} alt="" onError={(event) => { void recoverAvatarImage(event.currentTarget); }} className="w-10 h-10 rounded-xl object-cover"/><div className="min-w-0"><p className="text-sm font-bold text-white truncate">{user.name}</p><p className="text-xs text-slate-400 truncate">{user.nickname}</p></div></div><button type="button" onClick={() => unblockContact(user.id)} className="px-3 py-2 rounded-xl bg-slate-800 text-xs text-emerald-400 font-bold flex items-center gap-1"><RotateCcw size={14}/> Разблокировать</button></div>)}
           </div>
         ) : activeTab === 'requests' ? (
           <div className="space-y-2 pt-1">
@@ -256,7 +256,7 @@ export const FriendsSearch: React.FC = () => {
                   <img
                     src={resolveAvatarUrl(req.fromUser.avatar || PRESET_AVATARS[0])}
                     alt={req.fromUser.name}
-                    onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
+                    onError={(event) => { void recoverAvatarImage(event.currentTarget); }}
                     className="w-12 h-12 rounded-2xl object-cover border border-slate-700"
                   />
                   <div className="flex-1 min-w-0">
@@ -314,7 +314,7 @@ export const FriendsSearch: React.FC = () => {
                     <img
                       src={resolveAvatarUrl(user.avatar || PRESET_AVATARS[0])}
                       alt={user.name}
-                      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
+                      onError={(event) => { void recoverAvatarImage(event.currentTarget); }}
                       className="w-12 h-12 rounded-2xl object-cover border border-slate-700"
                     />
                     {user.status === 'online' && (
@@ -405,7 +405,7 @@ export const FriendsSearch: React.FC = () => {
             <img
               src={resolveAvatarUrl(currentUser.avatar || PRESET_AVATARS[0])}
               alt={currentUser.name}
-              onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
+              onError={(event) => { void recoverAvatarImage(event.currentTarget); }}
               className="w-16 h-16 rounded-2xl mx-auto object-cover border-2 border-emerald-400 shadow-md mb-3"
             />
             <h3 className="text-base font-black text-white">{currentUser.name}</h3>
