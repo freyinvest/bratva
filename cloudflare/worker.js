@@ -1,6 +1,25 @@
 const PROJECT_ID = 'bratva-msg';
 const API_ROOT = 'https://firestore.googleapis.com/v1/projects/' + PROJECT_ID + '/databases/(default)/documents';
 const IDENTITY_LOOKUP = 'https://identitytoolkit.googleapis.com/v1/accounts:lookup';
+const LEGACY_AVATAR_IDS = new Set([
+  'photo-1492562080023-ab3db95bfbce',
+  'photo-1500648767791-00dcc994a43e',
+  'photo-1503376780353-7e6692767b70',
+  'photo-1506794778202-cad84cf45f1d',
+  'photo-1507003211169-0a1dd7228f2d',
+  'photo-1519085360753-af0119f7cbe7',
+  'photo-1522075469751-3a6694fb2f61',
+  'photo-1527980965255-d3b416303d12',
+  'photo-1529156069898-49953e39b3ac',
+  'photo-1534528741775-53994a69daeb',
+  'photo-1535713875002-d1d0cf377fde',
+  'photo-1549719386-74dfcbf7dbed',
+  'photo-1552519507-da3b142c6e3d',
+  'photo-1566492031773-4f4e44671857',
+  'photo-1570295999919-56ceb5ecca61',
+  'photo-1580489944761-15a19d654956',
+]);
+
 let cachedAccessToken = '';
 let cachedAccessTokenExpiresAt = 0;
 
@@ -331,6 +350,70 @@ async function handleAvatarRead(request, env, headers, url) {
   });
 }
 
+
+async function handleLegacyAvatarRead(request, env, headers, url) {
+  if (!env.AVATARS_BUCKET) return json({ error: 'Avatar storage is not configured' }, 503, headers);
+
+  const match = url.pathname.match(/^\/avatars\/legacy\/(photo-[A-Za-z0-9-]+)\.jpg$/);
+  if (!match || !LEGACY_AVATAR_IDS.has(match[1])) return json({ error: 'Avatar not found' }, 404, headers);
+
+  const id = match[1];
+  const key = 'legacy-presets/' + id + '.jpg';
+  const stored = await env.AVATARS_BUCKET.get(key);
+  let body;
+  let etag = '';
+
+  if (stored) {
+    body = stored.body;
+    etag = stored.httpEtag || '';
+  } else {
+    const source = new URL('https://images.unsplash.com/' + id);
+    source.searchParams.set('fit', 'crop');
+    source.searchParams.set('w', '400');
+    source.searchParams.set('q', '80');
+    source.searchParams.set('fm', 'jpg');
+
+    let upstream;
+    try {
+      upstream = await fetch(source.toString(), {
+        headers: { Accept: 'image/jpeg' },
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch (error) {
+      console.warn('Could not fetch legacy avatar from upstream:', id, error);
+      return json({ error: 'Avatar source unavailable' }, 502, headers);
+    }
+
+    if (!upstream.ok) return json({ error: 'Avatar source unavailable' }, 502, headers);
+    const contentType = upstream.headers.get('Content-Type') || '';
+    if (!contentType.toLowerCase().startsWith('image/')) return json({ error: 'Invalid avatar source response' }, 502, headers);
+
+    const bytes = new Uint8Array(await upstream.arrayBuffer());
+    if (!bytes.length || bytes.length > 5 * 1024 * 1024) return json({ error: 'Avatar source image is too large' }, 502, headers);
+    body = bytes;
+
+    // Copy the first successful request into R2 so future image reads do not depend on Unsplash.
+    await env.AVATARS_BUCKET.put(key, bytes, {
+      httpMetadata: {
+        contentType: 'image/jpeg',
+        cacheControl: 'public, max-age=31536000, immutable',
+      },
+      customMetadata: { source: 'legacy-unsplash-preset' },
+    }).catch((error) => console.warn('Could not persist legacy avatar in R2; serving the upstream image:', id, error));
+  }
+
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set('Content-Type', 'image/jpeg');
+  responseHeaders.set('Cache-Control', 'public, max-age=31536000, immutable');
+  responseHeaders.set('X-Content-Type-Options', 'nosniff');
+  responseHeaders.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  responseHeaders.set('Access-Control-Allow-Origin', '*');
+  responseHeaders.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  if (etag) responseHeaders.set('ETag', etag);
+
+  return new Response(request.method === 'HEAD' ? null : body, { status: 200, headers: responseHeaders });
+}
+
 async function handleAvatarUpload(request, env, headers, url) {
   if (!env.FIREBASE_API_KEY) throw new WorkerError(503, 'Avatar upload authentication is not configured');
   if (!env.AVATARS_BUCKET) throw new WorkerError(503, 'Avatar storage is not configured');
@@ -398,7 +481,7 @@ export default {
       return json({
         ok: true,
         worker: 'bratva-push',
-        version: 'push-token-cleanup-v2',
+        version: 'r2-legacy-avatar-proxy-v1',
         secretsConfigured: Boolean(env.FIREBASE_API_KEY && env.FIREBASE_SERVICE_ACCOUNT_JSON),
       }, 200, { 'Cache-Control': 'no-store' });
     }
@@ -407,6 +490,14 @@ export default {
     const headers = cors(origin, env);
     if (origin && !origins(env).includes(origin)) return json({ error: 'Origin not allowed' }, 403, headers);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+
+    if ((request.method === 'GET' || request.method === 'HEAD') && url.pathname.startsWith('/avatars/legacy/')) {
+      try {
+        return await handleLegacyAvatarRead(request, env, headers, url);
+      } catch (error) {
+        return avatarErrorResponse(error, headers);
+      }
+    }
 
     if ((request.method === 'GET' || request.method === 'HEAD') && url.pathname.startsWith('/avatars/')) {
       try {
