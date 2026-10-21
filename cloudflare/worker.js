@@ -26,7 +26,7 @@ function origins(env) {
 
 function cors(origin, env) {
   const headers = {
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
@@ -305,6 +305,92 @@ async function sendFcm(accessToken, token, body, chatId, title = 'Братва �
   };
 }
 
+
+async function handleAvatarRead(request, env, headers, url) {
+  if (!env.AVATARS_BUCKET) return json({ error: 'Avatar storage is not configured' }, 503, headers);
+
+  const match = url.pathname.match(/^\/avatars\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.jpg$/i);
+  if (!match) return json({ error: 'Avatar not found' }, 404, headers);
+
+  const id = match[1].toLowerCase();
+  const object = await env.AVATARS_BUCKET.get('avatars/' + id + '.jpg');
+  if (!object) return json({ error: 'Avatar not found' }, 404, headers);
+
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set('Content-Type', object.httpMetadata && object.httpMetadata.contentType || 'image/jpeg');
+  responseHeaders.set('Cache-Control', object.httpMetadata && object.httpMetadata.cacheControl || 'public, max-age=31536000, immutable');
+  responseHeaders.set('X-Content-Type-Options', 'nosniff');
+  responseHeaders.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  responseHeaders.set('Access-Control-Allow-Origin', '*');
+  responseHeaders.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  if (object.httpEtag) responseHeaders.set('ETag', object.httpEtag);
+
+  return new Response(request.method === 'HEAD' ? null : object.body, {
+    status: 200,
+    headers: responseHeaders,
+  });
+}
+
+async function handleAvatarUpload(request, env, headers, url) {
+  if (!env.FIREBASE_API_KEY) throw new WorkerError(503, 'Avatar upload authentication is not configured');
+  if (!env.AVATARS_BUCKET) throw new WorkerError(503, 'Avatar storage is not configured');
+
+  const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\s+(.+)$/i);
+  if (!bearer) throw new WorkerError(401, 'Sign in to upload an avatar');
+  const uid = await verifiedUid(bearer[1], env.FIREBASE_API_KEY);
+
+  const data = await request.json().catch(() => null);
+  if (!data || typeof data.dataUrl !== 'string') throw new WorkerError(400, 'Expected a JPEG data URL');
+
+  const match = data.dataUrl.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match || match[1].length > 700000) throw new WorkerError(400, 'Only compressed JPEG avatars up to 512 KB are supported');
+
+  let binary;
+  try {
+    binary = atob(match[1]);
+  } catch {
+    throw new WorkerError(400, 'Invalid avatar encoding');
+  }
+  if (!binary.length || binary.length > 512 * 1024) {
+    throw new WorkerError(413, 'Avatar must be no larger than 512 KB');
+  }
+
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  if (bytes.length < 3 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) {
+    throw new WorkerError(400, 'Avatar content is not a valid JPEG');
+  }
+
+  const id = crypto.randomUUID().toLowerCase();
+  await env.AVATARS_BUCKET.put('avatars/' + id + '.jpg', bytes, {
+    httpMetadata: {
+      contentType: 'image/jpeg',
+      cacheControl: 'public, max-age=31536000, immutable',
+    },
+    customMetadata: {
+      ownerUid: uid,
+      purpose: 'avatar',
+    },
+  });
+
+  return json({ url: new URL('/avatars/' + id + '.jpg', url.origin).toString() }, 201, headers);
+}
+
+function avatarErrorResponse(error, headers) {
+  const status = error instanceof WorkerError ? error.status : 500;
+  if (status >= 500) {
+    console.error('Bratva avatar storage request failed', {
+      status,
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+  return json({
+    error: status < 500 && error instanceof Error
+      ? error.message
+      : 'Avatar storage temporarily unavailable',
+  }, status, headers);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -321,6 +407,23 @@ export default {
     const headers = cors(origin, env);
     if (origin && !origins(env).includes(origin)) return json({ error: 'Origin not allowed' }, 403, headers);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+
+    if ((request.method === 'GET' || request.method === 'HEAD') && url.pathname.startsWith('/avatars/')) {
+      try {
+        return await handleAvatarRead(request, env, headers, url);
+      } catch (error) {
+        return avatarErrorResponse(error, headers);
+      }
+    }
+
+    if (request.method === 'POST' && url.pathname === '/avatars/upload') {
+      try {
+        return await handleAvatarUpload(request, env, headers, url);
+      } catch (error) {
+        return avatarErrorResponse(error, headers);
+      }
+    }
+
     if (request.method !== 'POST') return json({ error: 'Use POST' }, 405, headers);
 
     try {

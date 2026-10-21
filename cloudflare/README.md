@@ -11,6 +11,7 @@ Open Worker settings and add:
 - **Text variable** `FIREBASE_API_KEY`: the Web API key from Firebase Console → Project settings → General. This is the public Firebase client API key, not an Admin credential.
 - **Secret** `FIREBASE_SERVICE_ACCOUNT_JSON`: the complete JSON key for a service account in the `bratva-msg` Google Cloud project. Never commit this file to GitHub or paste it into chat.
 - **Text variable** `ALLOWED_ORIGINS` (optional): comma-separated browser origins. The default allows `https://bratva-msg.web.app`, `https://bratva-msg.firebaseapp.com`, and `http://localhost:3000`.
+- **R2 bucket binding**: variable `AVATARS_BUCKET`, bucket `bratva-avatars`. The Worker serves avatar files through `/avatars/<uuid>.jpg`; leave the bucket's Public Development URL disabled because objects are served through the Worker.
 
 The service account needs Firestore read/write access for chat, block-list, push-token, and `pushDispatches` documents, plus permission to send FCM messages. Use the narrowest roles available in the project. The predefined roles typically needed are **Cloud Datastore User** (`roles/datastore.user`) and **Firebase Cloud Messaging API Admin** (`roles/firebasecloudmessaging.admin`). See [Google Cloud FCM roles](https://cloud.google.com/iam/docs/roles-permissions/firebasecloudmessaging).
 
