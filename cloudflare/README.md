@@ -31,3 +31,7 @@ The Hosting workflow passes this value into the Vite build. If it is absent, use
 The Worker verifies the Firebase ID token through Firebase Auth, checks the sender against the stored chat and message, respects a recipient's block record, and claims each message in `pushDispatches` to help prevent duplicate sends. Notification delivery is best-effort; a saved message will not be rolled back if the Worker is temporarily unavailable.
 
 **Important:** Do not merge the separate PR that deploys `functions/sendMessagePush` if keeping Firebase on the Spark plan. Firebase Cloud Functions deployment requires Blaze billing and could duplicate notifications if both senders are active.
+
+## Legacy avatar images in restricted networks
+
+The Worker exposes `GET /avatars/legacy/<photo-id>.jpg` for the allowlisted legacy Unsplash avatar IDs still present in Firestore. The first successful request fetches the image server-side and copies it into the `bratva-avatars` R2 bucket, so subsequent requests no longer depend on Unsplash. Keep the bucket's Public Development URL disabled. After publishing an updated Worker, verify `/health` reports `r2-legacy-avatar-proxy-v1`.
