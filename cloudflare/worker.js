@@ -120,7 +120,7 @@ async function googleAccessToken(account) {
   return cachedAccessToken;
 }
 
-async function verifiedUid(idToken, apiKey) {
+async function verifiedUid(idToken, apiKey, requireVerifiedEmail = true) {
   const response = await fetch(IDENTITY_LOOKUP + '?key=' + encodeURIComponent(apiKey), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -132,7 +132,7 @@ async function verifiedUid(idToken, apiKey) {
     throw new WorkerError(401, 'Sign in again to send notifications');
   }
   if (user.disabled === true) throw new WorkerError(403, 'This account is disabled');
-  if (user.emailVerified !== true) throw new WorkerError(403, 'Verify your email before sending notifications');
+  if (requireVerifiedEmail && user.emailVerified !== true) throw new WorkerError(403, 'Verify your email before sending notifications');
   return user.localId;
 }
 
@@ -337,7 +337,7 @@ async function handleAvatarUpload(request, env, headers, url) {
 
   const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\s+(.+)$/i);
   if (!bearer) throw new WorkerError(401, 'Sign in to upload an avatar');
-  const uid = await verifiedUid(bearer[1], env.FIREBASE_API_KEY);
+  const uid = await verifiedUid(bearer[1], env.FIREBASE_API_KEY, false);
 
   const data = await request.json().catch(() => null);
   if (!data || typeof data.dataUrl !== 'string') throw new WorkerError(400, 'Expected a JPEG data URL');
