@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
+import { isAvatarUploadCandidate, uploadAvatarIfNeeded } from '../../services/avatarStorage';
 import type { User as AppUser } from '../../types';
 
 export const AuthModal: React.FC = () => {
@@ -120,6 +121,7 @@ export const AuthModal: React.FC = () => {
       const cleanEmail = email.trim().toLowerCase();
 
       if (authMode === 'register') {
+        let avatarUploadFailed = false;
         const cleanName = fullName.trim();
         const cleanNickname = `@${nickname.trim().replace(/^@+/, '')}`;
 
@@ -141,13 +143,21 @@ export const AuthModal: React.FC = () => {
 
         await updateProfile(credential.user, { displayName: cleanName });
 
+        let avatarToSave = selectedAvatar;
+        try {
+          avatarToSave = await uploadAvatarIfNeeded(selectedAvatar);
+        } catch (avatarError) {
+          avatarUploadFailed = true;
+          console.warn('Avatar upload to R2 failed during registration; keeping the current avatar value.', avatarError);
+        }
+
         const profile: AppUser = {
           id: credential.user.uid,
           name: cleanName,
           nickname: cleanNickname,
           phone: '',
           email: cleanEmail,
-          avatar: selectedAvatar,
+          avatar: avatarToSave,
           bio: '',
           status: 'online',
           lastSeen: 'в сети',
@@ -170,7 +180,9 @@ export const AuthModal: React.FC = () => {
         await sendEmailVerification(credential.user);
         await signOut(auth);
         setAuthMode('login');
-        setSuccessMessage('Аккаунт создан. Мы отправили письмо для подтверждения адреса. Перейди по ссылке в письме, затем войди. Проверь папку «Спам», если письма нет во входящих.');
+        setSuccessMessage(avatarUploadFailed
+          ? 'Аккаунт создан. Письмо для подтверждения отправлено. Аватар пока остался на прежнем адресе; после входа приложение попробует перенести его в R2.'
+          : 'Аккаунт создан. Мы отправили письмо для подтверждения адреса. Перейди по ссылке в письме, затем войди. Проверь папку «Спам», если письма нет во входящих.');
       } else {
         const credential = await signInWithEmailAndPassword(
           auth,
@@ -196,7 +208,18 @@ export const AuthModal: React.FC = () => {
           return;
         }
 
-        const profile = { ...(profileSnapshot.data() as AppUser), id: credential.user.uid };
+        let profile: AppUser = { ...(profileSnapshot.data() as AppUser), id: credential.user.uid };
+        if (isAvatarUploadCandidate(profile.avatar)) {
+          try {
+            const migratedAvatar = await uploadAvatarIfNeeded(profile.avatar);
+            if (migratedAvatar !== profile.avatar) {
+              await setDoc(doc(db, 'users', credential.user.uid), { avatar: migratedAvatar }, { merge: true });
+              profile = { ...profile, avatar: migratedAvatar };
+            }
+          } catch (avatarError) {
+            console.warn('Legacy profile avatar migration to R2 was skipped:', avatarError);
+          }
+        }
 
 await setDoc(doc(db, 'publicProfiles', credential.user.uid), {
   id: credential.user.uid,

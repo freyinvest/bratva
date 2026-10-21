@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
+import { uploadAvatarIfNeeded } from '../../services/avatarStorage';
 
 export const ProfileView: React.FC = () => {
   const {
@@ -47,6 +48,7 @@ useEffect(() => {
   setAvatar(currentUser.avatar || '');
 }, [currentUser]);
   const [avatarError, setAvatarError] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -100,15 +102,24 @@ useEffect(() => {
   const totalPhotos = messages.filter(m => !!m.imageUrl).length;
   const friendsCount = allUsers.length - 1;
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile({
-      name,
-      nickname: nickname.startsWith('@') ? nickname : `@${nickname}`,
-      bio,
-      avatar
-    });
-    setIsEditing(false);
+    setAvatarError('');
+    setIsSavingProfile(true);
+    try {
+      const storedAvatar = await uploadAvatarIfNeeded(avatar);
+      updateProfile({
+        name,
+        nickname: nickname.startsWith('@') ? nickname : `@${nickname}`,
+        bio,
+        avatar: storedAvatar,
+      });
+      setIsEditing(false);
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : 'Не удалось сохранить аватар. Попробуйте ещё раз.');
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   return (
@@ -390,9 +401,10 @@ useEffect(() => {
               </button>
               <button
                 type="submit"
-                className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/25"
+                disabled={isSavingProfile}
+                className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/25"
               >
-                Сохранить
+                {isSavingProfile ? 'Сохраняем…' : 'Сохранить'}
               </button>
             </div>
           </form>
