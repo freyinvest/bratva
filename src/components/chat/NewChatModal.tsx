@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Users, MessageSquarePlus, Check, Search, Sparkles, Upload } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
+import { uploadAvatarIfNeeded } from '../../services/avatarStorage';
 
 interface NewChatModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [avatarUploadError, setAvatarUploadError] = useState('');
   const [isProcessingAvatar, setIsProcessingAvatar] = useState(false);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
   if (!isOpen) return null;
 
@@ -99,11 +101,20 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
     reader.readAsDataURL(file);
   };
 
-  const handleCreateGroup = (e: React.FormEvent) => {
+  const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!groupTitle.trim()) return;
-    createGroupChat(groupTitle, selectedParticipantIds, selectedGroupAvatar, groupDescription);
-    onClose();
+    if (!groupTitle.trim() || isProcessingAvatar || isCreatingGroup) return;
+    setAvatarUploadError('');
+    setIsCreatingGroup(true);
+    try {
+      const storedAvatar = await uploadAvatarIfNeeded(selectedGroupAvatar);
+      createGroupChat(groupTitle, selectedParticipantIds, storedAvatar, groupDescription);
+      onClose();
+    } catch (error) {
+      setAvatarUploadError(error instanceof Error ? error.message : 'Не удалось сохранить аватар группы. Попробуйте ещё раз.');
+    } finally {
+      setIsCreatingGroup(false);
+    }
   };
 
   const presetGroupAvatars = [
@@ -343,11 +354,11 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
 
             <button
               type="submit"
-              disabled={!groupTitle.trim()}
+              disabled={!groupTitle.trim() || isProcessingAvatar || isCreatingGroup}
               className="w-full py-3 rounded-2xl bg-emerald-500 disabled:opacity-50 text-slate-950 font-bold text-sm hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
             >
               <Sparkles size={16} />
-              Создать группу братвы
+              {isCreatingGroup ? 'Создаём группу…' : 'Создать группу братвы'}
             </button>
           </form>
         )}
