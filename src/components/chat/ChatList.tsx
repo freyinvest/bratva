@@ -17,7 +17,7 @@ import {
 import { useChat } from '../../context/ChatContext';
 import { NewChatModal } from './NewChatModal';
 import { PRESET_AVATARS } from '../../data/mockData';
-import { DEFAULT_AVATAR_URL, resolveAvatarUrl } from '../../utils/avatarUrl';
+import { recoverAvatarImage, resolveAvatarUrl } from '../../utils/avatarUrl';
 
 export const ChatList: React.FC = () => {
   const {
@@ -169,7 +169,7 @@ export const ChatList: React.FC = () => {
           <img
             src={resolveAvatarUrl(currentUser.avatar || PRESET_AVATARS[0])}
             alt={currentUser.name}
-            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
+            onError={(event) => { void recoverAvatarImage(event.currentTarget); }}
             className="w-7 h-7 rounded-full object-cover border border-emerald-500/40"
           />
         </button>
@@ -269,7 +269,7 @@ export const ChatList: React.FC = () => {
                     <img
                       src={avatarSrc}
                       alt={chat.title}
-                      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
+                      onError={(event) => { void recoverAvatarImage(event.currentTarget); }}
                       className="w-13 h-13 rounded-2xl object-cover border border-slate-800 shadow-sm"
                     />
                   ) : (

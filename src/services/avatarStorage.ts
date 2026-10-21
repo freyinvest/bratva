@@ -15,8 +15,6 @@ export function isAvatarUploadCandidate(avatar: string): boolean {
  * Upload only user-selected compressed JPEG data URLs to R2.
  */
 export async function uploadAvatarIfNeeded(avatar: string): Promise<string> {
-  if (avatar.startsWith(`${AVATAR_WORKER_URL}/avatars/`)) return avatar;
-
   const resolvedAvatar = resolveAvatarUrl(avatar);
   if (resolvedAvatar !== avatar) return resolvedAvatar;
   if (!avatar.startsWith('data:image/jpeg;base64,')) return avatar;
@@ -44,5 +42,5 @@ export async function uploadAvatarIfNeeded(avatar: string): Promise<string> {
     );
   }
 
-  return payload.url;
+  return resolveAvatarUrl(payload.url);
 }

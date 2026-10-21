@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
-import { DEFAULT_AVATAR_URL, resolveAvatarUrl } from '../../utils/avatarUrl';
+import { recoverAvatarImage, resolveAvatarUrl } from '../../utils/avatarUrl';
 import { uploadAvatarIfNeeded } from '../../services/avatarStorage';
 
 export const ProfileView: React.FC = () => {
@@ -164,7 +164,7 @@ useEffect(() => {
               <img
                 src={resolveAvatarUrl(currentUser.avatar || PRESET_AVATARS[0])}
                 alt={currentUser.name}
-                onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
+                onError={(event) => { void recoverAvatarImage(event.currentTarget); }}
                 className="w-full h-full rounded-[22px] object-cover"
               />
             </div>
@@ -315,7 +315,7 @@ useEffect(() => {
     <p className="text-xs text-red-400 mb-2">{avatarError}</p>
   )}
   <div className="flex items-center gap-3 mb-3">
-    {avatar ? <img src={resolveAvatarUrl(avatar)} alt="Предпросмотр аватара" className="w-14 h-14 rounded-xl object-cover border border-slate-700" onError={(event) => { setAvatarError('Не удалось загрузить выбранный аватар.'); event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }} /> : <div className="w-14 h-14 rounded-xl border border-dashed border-slate-600 flex items-center justify-center text-[10px] text-slate-500">Пусто</div>}
+    {avatar ? <img src={resolveAvatarUrl(avatar)} alt="Предпросмотр аватара" className="w-14 h-14 rounded-xl object-cover border border-slate-700" onError={(event) => { setAvatarError('Не удалось загрузить выбранный аватар.'); void recoverAvatarImage(event.currentTarget); }} /> : <div className="w-14 h-14 rounded-xl border border-dashed border-slate-600 flex items-center justify-center text-[10px] text-slate-500">Пусто</div>}
     <p className="text-xs text-slate-400">Выбранный аватар всегда находится первым. Можно оставить поле пустым.</p>
   </div>
 
@@ -328,7 +328,7 @@ useEffect(() => {
                     title="Выбранный аватар"
                     className="aspect-square rounded-xl overflow-hidden border-2 border-emerald-500 scale-95"
                   >
-                    <img src={resolveAvatarUrl(avatar)} alt="Выбранный аватар" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }} className="w-full h-full object-cover" />
+                    <img src={resolveAvatarUrl(avatar)} alt="Выбранный аватар" onError={(event) => { void recoverAvatarImage(event.currentTarget); }} className="w-full h-full object-cover" />
                   </button>
                 ) : (
                   <button
@@ -347,7 +347,7 @@ useEffect(() => {
                     aria-label="Выбрать аватар"
                     className="aspect-square rounded-xl overflow-hidden border-2 border-transparent opacity-70 hover:opacity-100 transition-all"
                   >
-                    <img src={resolveAvatarUrl(url)} alt="Аватар" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }} className="w-full h-full object-cover" />
+                    <img src={resolveAvatarUrl(url)} alt="Аватар" onError={(event) => { void recoverAvatarImage(event.currentTarget); }} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>

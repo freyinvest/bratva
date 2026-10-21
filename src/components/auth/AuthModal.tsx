@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
-import { DEFAULT_AVATAR_URL, resolveAvatarUrl } from '../../utils/avatarUrl';
+import { recoverAvatarImage, resolveAvatarUrl } from '../../utils/avatarUrl';
 import { isAvatarUploadCandidate, uploadAvatarIfNeeded } from '../../services/avatarStorage';
 import type { User as AppUser } from '../../types';
 
@@ -344,7 +344,7 @@ setAuthenticatedUser(profile);
                     {avatarError && <p role="alert" className="mb-2 text-xs text-red-400">{avatarError}</p>}
                     <div className="mb-3 flex items-center gap-3">
                       <img src={resolveAvatarUrl(selectedAvatar || PRESET_AVATARS[0])} alt="Предпросмотр аватара"
-                        onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
+                        onError={(event) => { void recoverAvatarImage(event.currentTarget); }}
                         className="h-14 w-14 rounded-xl border border-slate-700 object-cover" />
                       <p className="text-xs text-slate-400">Так будет выглядеть твой аватар</p>
                     </div>
@@ -357,7 +357,7 @@ setAuthenticatedUser(profile);
                             selectedAvatar === url ? 'border-emerald-500 scale-95' : 'border-transparent opacity-60 hover:opacity-100'
                           }`}
                         >
-                          <img src={resolveAvatarUrl(url)} alt="" className="w-full h-full object-cover" />
+                          <img src={resolveAvatarUrl(url)} alt="" onError={(event) => { void recoverAvatarImage(event.currentTarget); }} className="w-full h-full object-cover" />
                         </button>
                       ))}
                     </div>
