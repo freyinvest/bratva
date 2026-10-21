@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Users, MessageSquarePlus, Check, Search, Sparkles } from 'lucide-react';
+import { X, Users, MessageSquarePlus, Check, Search, Sparkles, Upload } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
 
@@ -20,6 +20,8 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
     'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=400&q=80'
   );
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
+  const [avatarUploadError, setAvatarUploadError] = useState('');
+  const [isProcessingAvatar, setIsProcessingAvatar] = useState(false);
 
   if (!isOpen) return null;
 
@@ -40,6 +42,61 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
   const handleStartDirect = (userId: string) => {
     startDirectChat(userId);
     onClose();
+  };
+
+  const handleGroupAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setAvatarUploadError('');
+    if (!file.type.startsWith('image/')) {
+      setAvatarUploadError('Выберите файл изображения.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setAvatarUploadError('Файл слишком большой. Максимум — 10 МБ.');
+      return;
+    }
+
+    setIsProcessingAvatar(true);
+    const reader = new FileReader();
+    reader.onerror = () => {
+      setAvatarUploadError('Не удалось прочитать файл. Попробуйте другое изображение.');
+      setIsProcessingAvatar(false);
+    };
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => {
+        setAvatarUploadError('Не удалось открыть изображение.');
+        setIsProcessingAvatar(false);
+      };
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDimension = 320;
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) {
+          setAvatarUploadError('Не удалось обработать изображение.');
+          setIsProcessingAvatar(false);
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        // Keep the avatar small enough to store with the group document in Firestore.
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+        if (dataUrl.length > 700_000) {
+          setAvatarUploadError('Изображение не удалось уменьшить до нужного размера. Выберите другое.');
+          setIsProcessingAvatar(false);
+          return;
+        }
+        setSelectedGroupAvatar(dataUrl);
+        setIsProcessingAvatar(false);
+      };
+      image.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCreateGroup = (e: React.FormEvent) => {
@@ -204,7 +261,41 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
                     )}
                   </div>
                 ))}
+                <label
+                  className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors ${
+                    selectedGroupAvatar.startsWith('data:image/') ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-slate-600 text-slate-400 hover:border-emerald-500 hover:text-emerald-400'
+                  }`}
+                  title="Загрузить аватар с компьютера"
+                >
+                  {selectedGroupAvatar.startsWith('data:image/') ? (
+                    <img src={selectedGroupAvatar} alt="Загруженный аватар" className="w-full h-full object-cover rounded-lg" />
+                  ) : (
+                    <>
+                      <Upload size={18} />
+                      <span className="text-[10px] text-center px-1">С диска</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleGroupAvatarUpload}
+                    disabled={isProcessingAvatar}
+                    className="sr-only"
+                    aria-label="Загрузить аватар группы с компьютера"
+                  />
+                </label>
               </div>
+              {isProcessingAvatar && <p className="mt-2 text-[11px] text-slate-400">Обрабатываем изображение…</p>}
+              {avatarUploadError && <p role="alert" className="mt-2 text-[11px] text-red-400">{avatarUploadError}</p>}
+              {selectedGroupAvatar.startsWith('data:image/') && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectedGroupAvatar(presetGroupAvatars[0]); setAvatarUploadError(''); }}
+                  className="mt-2 text-[11px] text-slate-400 hover:text-slate-200 underline"
+                >
+                  Вернуть стандартный аватар
+                </button>
+              )}
             </div>
 
             <div>
