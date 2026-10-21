@@ -36,16 +36,16 @@ export function resolveAvatarUrl(value: string | undefined | null): string {
     if (url.hostname === 'pub-96c44975a3a04098be85bbc06e4c4c7b.r2.dev') return value;
 
     if (url.hostname === 'bratva.vototene997.workers.dev') {
-      const legacyWorkerPath = url.pathname.match(/^\\/avatars\\/legacy\\/(photo-[A-Za-z0-9-]+)\\.jpg$/);
+      const legacyWorkerPath = url.pathname.match(/^\/avatars\/legacy\/(photo-[A-Za-z0-9-]+)\.jpg$/);
       if (legacyWorkerPath && LEGACY_UNSPLASH_PHOTO_IDS.has(legacyWorkerPath[1])) {
         return `${R2_PUBLIC_BASE_URL}/legacy-presets/${legacyWorkerPath[1]}.jpg`;
       }
-      const avatarPath = url.pathname.match(/^\\/avatars\\/[0-9a-f-]{36}\\.jpg$/i);
+      const avatarPath = url.pathname.match(/^\/avatars\/[0-9a-f-]{36}\.jpg$/i);
       if (avatarPath) return `${R2_PUBLIC_BASE_URL}${url.pathname}`;
     }
 
     if (url.hostname !== 'images.unsplash.com') return value;
-    const match = url.pathname.match(/^\\/(photo-[A-Za-z0-9-]+)$/);
+    const match = url.pathname.match(/^\/(photo-[A-Za-z0-9-]+)$/);
     if (!match || !LEGACY_UNSPLASH_PHOTO_IDS.has(match[1])) return value;
     return `${R2_PUBLIC_BASE_URL}/legacy-presets/${match[1]}.jpg`;
   } catch {
@@ -59,7 +59,7 @@ export function resolveAvatarUrl(value: string | undefined | null): string {
  */
 export async function recoverAvatarImage(image: HTMLImageElement): Promise<void> {
   const failedUrl = image.currentSrc || image.src;
-  const legacyMatch = failedUrl.match(/\\/legacy-presets\\/(photo-[A-Za-z0-9-]+)\\.jpg(?:[?#].*)?$/);
+  const legacyMatch = failedUrl.match(/\/legacy-presets\/(photo-[A-Za-z0-9-]+)\.jpg(?:[?#].*)?$/);
   image.onerror = null;
 
   if (legacyMatch && LEGACY_UNSPLASH_PHOTO_IDS.has(legacyMatch[1])) {
