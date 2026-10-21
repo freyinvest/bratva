@@ -57,8 +57,18 @@ export function resolveAvatarUrl(value: string | undefined | null): string {
  * If an older preset is missing from R2, ask the Worker to fetch and cache it with HEAD
  * (no multi-kilobyte image body crosses the Worker connection), then retry the direct R2 URL.
  */
+const avatarRecoveryAttempts = new WeakMap<HTMLImageElement, string>();
+
 export async function recoverAvatarImage(image: HTMLImageElement): Promise<void> {
   const failedUrl = image.currentSrc || image.src;
+  const failedKey = failedUrl.split('?')[0];
+  if (avatarRecoveryAttempts.get(image) === failedKey) {
+    image.onerror = null;
+    image.src = DEFAULT_AVATAR_URL;
+    return;
+  }
+  avatarRecoveryAttempts.set(image, failedKey);
+
   const legacyMatch = failedUrl.match(/\/legacy-presets\/(photo-[A-Za-z0-9-]+)\.jpg(?:[?#].*)?$/);
   image.onerror = null;
 
