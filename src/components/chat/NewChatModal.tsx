@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Users, MessageSquarePlus, Check, Search, Sparkles, Upload } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
+import { DEFAULT_AVATAR_URL, resolveAvatarUrl } from '../../utils/avatarUrl';
 import { uploadAvatarIfNeeded } from '../../services/avatarStorage';
 
 interface NewChatModalProps {
@@ -191,9 +192,9 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
                 >
                   <div className="relative">
                     <img
-                      src={user.avatar || PRESET_AVATARS[0]}
+                      src={resolveAvatarUrl(user.avatar || PRESET_AVATARS[0])}
                       alt={user.name}
-                      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+                      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
                       className="w-11 h-11 rounded-full object-cover border border-slate-700"
                     />
                     {user.status === 'online' && (
@@ -250,7 +251,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
                 <div className="flex items-center gap-3">
                   {selectedGroupAvatar ? (
                     <img
-                      src={selectedGroupAvatar}
+                      src={resolveAvatarUrl(selectedGroupAvatar)}
                       alt="Предпросмотр аватара группы"
                       className="w-16 h-16 rounded-2xl object-cover border border-emerald-500/50"
                     />
@@ -313,9 +314,9 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
                       }`}
                     >
                       <img
-                        src={user.avatar || PRESET_AVATARS[0]}
+                        src={resolveAvatarUrl(user.avatar || PRESET_AVATARS[0])}
                         alt={user.name}
-                        onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+                        onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
                         className="w-8 h-8 rounded-full object-cover"
                       />
                       <div className="flex-1 min-w-0">
