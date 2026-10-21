@@ -427,12 +427,18 @@ export const ChatRoom: React.FC = () => {
             className="flex items-center gap-2.5 cursor-pointer min-w-0 group"
           >
             <div className="relative shrink-0">
-              <img
-                src={(activeChat.type === 'direct' ? otherUser?.avatar : activeChat.avatar) || activeChat.avatar || PRESET_AVATARS[0]}
-                alt={activeChat.type === 'direct' ? otherUser?.name || activeChat.title : activeChat.title}
-                onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
-                className="w-10 h-10 rounded-2xl object-cover border border-slate-800 shadow-sm"
-              />
+              {activeChat.type === 'direct' || activeChat.avatar ? (
+                <img
+                  src={activeChat.type === 'direct' ? otherUser?.avatar || activeChat.avatar || PRESET_AVATARS[0] : activeChat.avatar}
+                  alt={activeChat.type === 'direct' ? otherUser?.name || activeChat.title : activeChat.title}
+                  onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+                  className="w-10 h-10 rounded-2xl object-cover border border-slate-800 shadow-sm"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-2xl border border-slate-800 bg-slate-950 text-slate-500 flex items-center justify-center shadow-sm">
+                  <Users size={20} />
+                </div>
+              )}
               {activeChat.type === 'direct' && otherUser?.status === 'online' && (
                 <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-900" />
               )}
