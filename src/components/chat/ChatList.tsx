@@ -17,6 +17,7 @@ import {
 import { useChat } from '../../context/ChatContext';
 import { NewChatModal } from './NewChatModal';
 import { PRESET_AVATARS } from '../../data/mockData';
+import { DEFAULT_AVATAR_URL, resolveAvatarUrl } from '../../utils/avatarUrl';
 
 export const ChatList: React.FC = () => {
   const {
@@ -166,9 +167,9 @@ export const ChatList: React.FC = () => {
             {currentUser.name.split(' ')[0]}
           </span>
           <img
-            src={currentUser.avatar || PRESET_AVATARS[0]}
+            src={resolveAvatarUrl(currentUser.avatar || PRESET_AVATARS[0])}
             alt={currentUser.name}
-            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
             className="w-7 h-7 rounded-full object-cover border border-emerald-500/40"
           />
         </button>
@@ -248,9 +249,9 @@ export const ChatList: React.FC = () => {
             const isSelected = activeChatId === chat.id;
             const isMenuOpen = activeMenuChatId === chat.id;
             const peerUser = chat.type === 'direct' ? allUsers.find((user) => user.id !== currentUser.id && chat.participants.includes(user.id)) : undefined;
-            const avatarSrc = chat.type === 'direct'
+            const avatarSrc = resolveAvatarUrl(chat.type === 'direct'
               ? peerUser?.avatar || chat.avatar || PRESET_AVATARS[0]
-              : chat.avatar;
+              : chat.avatar);
 
             return (
               <div
@@ -268,7 +269,7 @@ export const ChatList: React.FC = () => {
                     <img
                       src={avatarSrc}
                       alt={chat.title}
-                      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+                      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
                       className="w-13 h-13 rounded-2xl object-cover border border-slate-800 shadow-sm"
                     />
                   ) : (
