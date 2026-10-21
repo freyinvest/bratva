@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { PRESET_AVATARS } from '../../data/mockData';
-import { uploadAvatarIfNeeded } from '../../services/avatarStorage';
+import { isAvatarUploadCandidate, uploadAvatarIfNeeded } from '../../services/avatarStorage';
 import type { User as AppUser } from '../../types';
 
 export const AuthModal: React.FC = () => {
@@ -144,13 +144,11 @@ export const AuthModal: React.FC = () => {
         await updateProfile(credential.user, { displayName: cleanName });
 
         let avatarToSave = selectedAvatar;
-        if (selectedAvatar.startsWith('data:image/jpeg;base64,')) {
-          try {
-            avatarToSave = await uploadAvatarIfNeeded(selectedAvatar);
-          } catch (avatarError) {
-            avatarUploadFailed = true;
-            console.warn('Avatar upload to R2 failed during registration; keeping the compressed fallback.', avatarError);
-          }
+        try {
+          avatarToSave = await uploadAvatarIfNeeded(selectedAvatar);
+        } catch (avatarError) {
+          avatarUploadFailed = true;
+          console.warn('Avatar upload to R2 failed during registration; keeping the current avatar value.', avatarError);
         }
 
         const profile: AppUser = {
@@ -183,7 +181,7 @@ export const AuthModal: React.FC = () => {
         await signOut(auth);
         setAuthMode('login');
         setSuccessMessage(avatarUploadFailed
-          ? 'Аккаунт создан. Письмо для подтверждения отправлено. Аватар временно сохранён в старом формате; после входа приложение попробует перенести его в R2.'
+          ? 'Аккаунт создан. Письмо для подтверждения отправлено. Аватар пока остался на прежнем адресе; после входа приложение попробует перенести его в R2.'
           : 'Аккаунт создан. Мы отправили письмо для подтверждения адреса. Перейди по ссылке в письме, затем войди. Проверь папку «Спам», если письма нет во входящих.');
       } else {
         const credential = await signInWithEmailAndPassword(
@@ -211,7 +209,7 @@ export const AuthModal: React.FC = () => {
         }
 
         let profile: AppUser = { ...(profileSnapshot.data() as AppUser), id: credential.user.uid };
-        if (profile.avatar.startsWith('data:image/jpeg;base64,')) {
+        if (isAvatarUploadCandidate(profile.avatar)) {
           try {
             const migratedAvatar = await uploadAvatarIfNeeded(profile.avatar);
             if (migratedAvatar !== profile.avatar) {
