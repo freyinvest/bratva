@@ -354,7 +354,7 @@ async function handleAvatarRead(request, env, headers, url) {
 async function handleLegacyAvatarRead(request, env, headers, url) {
   if (!env.AVATARS_BUCKET) return json({ error: 'Avatar storage is not configured' }, 503, headers);
 
-  const match = url.pathname.match(/^\\/avatars\\/legacy\\/(photo-[A-Za-z0-9-]+)\\.jpg$/);
+  const match = url.pathname.match(/^\/avatars\/legacy\/(photo-[A-Za-z0-9-]+)\.jpg$/);
   if (!match || !LEGACY_AVATAR_IDS.has(match[1])) return json({ error: 'Avatar not found' }, 404, headers);
 
   const id = match[1];
