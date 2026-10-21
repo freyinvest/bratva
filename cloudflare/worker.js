@@ -481,7 +481,7 @@ export default {
       return json({
         ok: true,
         worker: 'bratva-push',
-        version: 'push-token-cleanup-v2',
+        version: 'r2-legacy-avatar-proxy-v1',
         secretsConfigured: Boolean(env.FIREBASE_API_KEY && env.FIREBASE_SERVICE_ACCOUNT_JSON),
       }, 200, { 'Cache-Control': 'no-store' });
     }
