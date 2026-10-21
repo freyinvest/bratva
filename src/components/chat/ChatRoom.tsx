@@ -23,7 +23,7 @@ import {
 import { useChat } from '../../context/ChatContext';
 import { Message, User } from '../../types';
 import { PRESET_AVATARS } from '../../data/mockData';
-import { DEFAULT_AVATAR_URL, resolveAvatarUrl } from '../../utils/avatarUrl';
+import { recoverAvatarImage, resolveAvatarUrl } from '../../utils/avatarUrl';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { uploadAvatarIfNeeded } from '../../services/avatarStorage';
@@ -432,7 +432,7 @@ export const ChatRoom: React.FC = () => {
                 <img
                   src={resolveAvatarUrl(activeChat.type === 'direct' ? otherUser?.avatar || activeChat.avatar || PRESET_AVATARS[0] : activeChat.avatar)}
                   alt={activeChat.type === 'direct' ? otherUser?.name || activeChat.title : activeChat.title}
-                  onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
+                  onError={(event) => { void recoverAvatarImage(event.currentTarget); }}
                   className="w-10 h-10 rounded-2xl object-cover border border-slate-800 shadow-sm"
                 />
               ) : (
@@ -514,7 +514,7 @@ export const ChatRoom: React.FC = () => {
                   <img
                     src={resolveAvatarUrl(activeChat.avatar)}
                     alt="Аватар группы"
-                    onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }}
+                    onError={(event) => { void recoverAvatarImage(event.currentTarget); }}
                     className="w-14 h-14 rounded-xl object-cover border border-slate-700"
                   />
                 ) : (
@@ -548,7 +548,7 @@ export const ChatRoom: React.FC = () => {
                   if (!u) return null;
                   return (
                     <div key={pid} className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 rounded-full text-xs">
-                      <img src={resolveAvatarUrl(u.avatar || PRESET_AVATARS[0])} alt={u.name} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = DEFAULT_AVATAR_URL; }} className="w-4 h-4 rounded-full object-cover" />
+                      <img src={resolveAvatarUrl(u.avatar || PRESET_AVATARS[0])} alt={u.name} onError={(event) => { void recoverAvatarImage(event.currentTarget); }} className="w-4 h-4 rounded-full object-cover" />
                       <span className="text-slate-200">{u.name}</span>
                       {u.id === activeChat.creatorId && (
                         <span className="text-[9px] text-emerald-400 font-bold ml-1">Создатель</span>
