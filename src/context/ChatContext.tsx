@@ -1031,9 +1031,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       id: newChatId,
       type: 'group',
       title,
-      avatar:
-        avatar ||
-        'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=400&q=80',
+      avatar: avatar || '',
       participants: Array.from(new Set([creator.id, ...participantIds])),
       unreadCount: 0,
       isPinned: false,

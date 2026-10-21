@@ -11,6 +11,7 @@ import {
   Shield,
   UserCheck,
   Image as ImageIcon,
+  Users,
   Bell,
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
@@ -247,7 +248,9 @@ export const ChatList: React.FC = () => {
             const isSelected = activeChatId === chat.id;
             const isMenuOpen = activeMenuChatId === chat.id;
             const peerUser = chat.type === 'direct' ? allUsers.find((user) => user.id !== currentUser.id && chat.participants.includes(user.id)) : undefined;
-            const avatarSrc = (chat.type === 'direct' ? peerUser?.avatar : chat.avatar) || chat.avatar || PRESET_AVATARS[0];
+            const avatarSrc = chat.type === 'direct'
+              ? peerUser?.avatar || chat.avatar || PRESET_AVATARS[0]
+              : chat.avatar;
 
             return (
               <div
@@ -261,12 +264,18 @@ export const ChatList: React.FC = () => {
               >
                 {/* Chat Avatar with Status */}
                 <div className="relative shrink-0">
-                  <img
-                    src={avatarSrc}
-                    alt={chat.title}
-                    onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
-                    className="w-13 h-13 rounded-2xl object-cover border border-slate-800 shadow-sm"
-                  />
+                  {avatarSrc ? (
+                    <img
+                      src={avatarSrc}
+                      alt={chat.title}
+                      onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+                      className="w-13 h-13 rounded-2xl object-cover border border-slate-800 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-13 h-13 rounded-2xl border border-slate-800 bg-slate-900 text-slate-500 flex items-center justify-center shadow-sm">
+                      <Users size={22} />
+                    </div>
+                  )}
                   {chat.type === 'direct' ? (
                     peerUser?.status === 'online' ? (
                       <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-950" />

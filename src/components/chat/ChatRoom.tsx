@@ -23,6 +23,9 @@ import {
 import { useChat } from '../../context/ChatContext';
 import { Message, User } from '../../types';
 import { PRESET_AVATARS } from '../../data/mockData';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { uploadAvatarIfNeeded } from '../../services/avatarStorage';
 
 const messageOrderTimestamp = (message: Message): number => {
   if (typeof message.createdAtMs === 'number') return message.createdAtMs;
@@ -56,6 +59,8 @@ export const ChatRoom: React.FC = () => {
   const [customImageUrl, setCustomImageUrl] = useState('');
   const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [showChatInfo, setShowChatInfo] = useState(false);
+  const [groupAvatarError, setGroupAvatarError] = useState('');
+  const [isUpdatingGroupAvatar, setIsUpdatingGroupAvatar] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -114,6 +119,76 @@ export const ChatRoom: React.FC = () => {
 
   const isOtherTyping = isTypingUserId && activeChat.participants.includes(isTypingUserId);
   const typingUser = allUsers.find(u => u.id === isTypingUserId);
+
+  const handleGroupAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (activeChat.type !== 'group' || activeChat.creatorId !== currentUser.id) {
+      setGroupAvatarError('Изменить аватар может только создатель группы.');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      setGroupAvatarError('Выберите файл изображения.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setGroupAvatarError('Размер файла не должен превышать 10 МБ.');
+      return;
+    }
+
+    setIsUpdatingGroupAvatar(true);
+    setGroupAvatarError('');
+    try {
+      const jpegDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Не удалось прочитать изображение.'));
+        reader.onload = () => {
+          if (typeof reader.result !== 'string') {
+            reject(new Error('Не удалось прочитать изображение.'));
+            return;
+          }
+
+          const image = new Image();
+          image.onerror = () => reject(new Error('Не удалось открыть изображение.'));
+          image.onload = () => {
+            try {
+              const maxDimension = 320;
+              const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(image.width * scale));
+              canvas.height = Math.max(1, Math.round(image.height * scale));
+              const context = canvas.getContext('2d');
+              if (!context) {
+                reject(new Error('Браузер не смог обработать изображение.'));
+                return;
+              }
+              context.drawImage(image, 0, 0, canvas.width, canvas.height);
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+              if (dataUrl.length > 700_000) {
+                reject(new Error('Не удалось сжать изображение. Выберите другое фото.'));
+                return;
+              }
+              resolve(dataUrl);
+            } catch {
+              reject(new Error('Не удалось обработать изображение.'));
+            }
+          };
+          image.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      const storedAvatar = await uploadAvatarIfNeeded(jpegDataUrl);
+      await setDoc(doc(db, 'chats', activeChat.id), { avatar: storedAvatar }, { merge: true });
+      setGroupAvatarError('');
+    } catch (error) {
+      setGroupAvatarError(error instanceof Error ? error.message : 'Не удалось изменить аватар группы.');
+    } finally {
+      setIsUpdatingGroupAvatar(false);
+    }
+  };
 
   const handleSend = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -352,12 +427,18 @@ export const ChatRoom: React.FC = () => {
             className="flex items-center gap-2.5 cursor-pointer min-w-0 group"
           >
             <div className="relative shrink-0">
-              <img
-                src={(activeChat.type === 'direct' ? otherUser?.avatar : activeChat.avatar) || activeChat.avatar || PRESET_AVATARS[0]}
-                alt={activeChat.type === 'direct' ? otherUser?.name || activeChat.title : activeChat.title}
-                onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
-                className="w-10 h-10 rounded-2xl object-cover border border-slate-800 shadow-sm"
-              />
+              {activeChat.type === 'direct' || activeChat.avatar ? (
+                <img
+                  src={activeChat.type === 'direct' ? otherUser?.avatar || activeChat.avatar || PRESET_AVATARS[0] : activeChat.avatar}
+                  alt={activeChat.type === 'direct' ? otherUser?.name || activeChat.title : activeChat.title}
+                  onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+                  className="w-10 h-10 rounded-2xl object-cover border border-slate-800 shadow-sm"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-2xl border border-slate-800 bg-slate-950 text-slate-500 flex items-center justify-center shadow-sm">
+                  <Users size={20} />
+                </div>
+              )}
               {activeChat.type === 'direct' && otherUser?.status === 'online' && (
                 <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-900" />
               )}
@@ -422,6 +503,39 @@ export const ChatRoom: React.FC = () => {
             <p className="text-xs text-slate-300 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
               {activeChat.description}
             </p>
+          )}
+
+          {activeChat.type === 'group' && activeChat.creatorId === currentUser.id && (
+            <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+              <p className="text-[11px] text-slate-400 font-semibold">Аватар группы</p>
+              <div className="flex items-center gap-3">
+                {activeChat.avatar ? (
+                  <img
+                    src={activeChat.avatar}
+                    alt="Аватар группы"
+                    onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = PRESET_AVATARS[0]; }}
+                    className="w-14 h-14 rounded-xl object-cover border border-slate-700"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-xl border border-dashed border-slate-700 flex items-center justify-center text-slate-500">
+                    <Users size={22} />
+                  </div>
+                )}
+                <label className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-xs font-semibold text-slate-200 hover:border-emerald-500 hover:text-emerald-400 cursor-pointer transition-colors">
+                  <ImageIcon size={16} />
+                  {isUpdatingGroupAvatar ? 'Загружаем…' : 'Изменить фото'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleGroupAvatarChange}
+                    disabled={isUpdatingGroupAvatar}
+                    className="sr-only"
+                    aria-label="Изменить аватар группы"
+                  />
+                </label>
+              </div>
+              {groupAvatarError && <p role="alert" className="text-[11px] text-red-400">{groupAvatarError}</p>}
+            </div>
           )}
 
           {activeChat.type === 'group' && (

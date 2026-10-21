@@ -17,9 +17,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
   // Group creation state
   const [groupTitle, setGroupTitle] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
-  const [selectedGroupAvatar, setSelectedGroupAvatar] = useState(
-    'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=400&q=80'
-  );
+  const [selectedGroupAvatar, setSelectedGroupAvatar] = useState('');
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [avatarUploadError, setAvatarUploadError] = useState('');
   const [isProcessingAvatar, setIsProcessingAvatar] = useState(false);
@@ -116,13 +114,6 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
       setIsCreatingGroup(false);
     }
   };
-
-  const presetGroupAvatars = [
-    'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=400&q=80',
-    'https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?auto=format&fit=crop&w=400&q=80',
-    'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=400&q=80',
-    'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=400&q=80',
-  ];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3">
@@ -255,58 +246,50 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
               <label className="text-xs font-semibold text-slate-300 block mb-1.5">
                 Аватар группы:
               </label>
-              <div className="grid grid-cols-4 gap-2">
-                {presetGroupAvatars.map((img, i) => (
-                  <div
-                    key={i}
-                    onClick={() => setSelectedGroupAvatar(img)}
-                    className={`aspect-square rounded-xl overflow-hidden cursor-pointer border-2 transition-all relative ${
-                      selectedGroupAvatar === img ? 'border-emerald-500 scale-95' : 'border-transparent opacity-60 hover:opacity-100'
-                    }`}
-                  >
-                    <img src={img} alt="Avatar" className="w-full h-full object-cover" />
-                    {selectedGroupAvatar === img && (
-                      <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
-                        <Check size={16} className="text-emerald-400" strokeWidth={3} />
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <label
-                  className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors ${
-                    selectedGroupAvatar.startsWith('data:image/') ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-slate-600 text-slate-400 hover:border-emerald-500 hover:text-emerald-400'
-                  }`}
-                  title="Загрузить аватар с компьютера"
-                >
-                  {selectedGroupAvatar.startsWith('data:image/') ? (
-                    <img src={selectedGroupAvatar} alt="Загруженный аватар" className="w-full h-full object-cover rounded-lg" />
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  {selectedGroupAvatar ? (
+                    <img
+                      src={selectedGroupAvatar}
+                      alt="Предпросмотр аватара группы"
+                      className="w-16 h-16 rounded-2xl object-cover border border-emerald-500/50"
+                    />
                   ) : (
-                    <>
-                      <Upload size={18} />
-                      <span className="text-[10px] text-center px-1">С диска</span>
-                    </>
+                    <div className="w-16 h-16 rounded-2xl border border-dashed border-slate-600 bg-slate-950/60 flex items-center justify-center text-slate-500">
+                      <Users size={24} />
+                    </div>
                   )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleGroupAvatarUpload}
-                    disabled={isProcessingAvatar}
-                    className="sr-only"
-                    aria-label="Загрузить аватар группы с компьютера"
-                  />
-                </label>
+                  <label
+                    className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-slate-600 bg-slate-800/80 px-3 py-4 text-sm font-semibold text-slate-200 cursor-pointer hover:border-emerald-500 hover:text-emerald-400 transition-colors"
+                    title="Выбрать изображение с компьютера"
+                  >
+                    <Upload size={18} />
+                    {selectedGroupAvatar ? 'Изменить фото с диска' : 'С диска'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleGroupAvatarUpload}
+                      disabled={isProcessingAvatar || isCreatingGroup}
+                      className="sr-only"
+                      aria-label="Загрузить аватар группы с компьютера"
+                    />
+                  </label>
+                  {selectedGroupAvatar && (
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedGroupAvatar(''); setAvatarUploadError(''); }}
+                      disabled={isProcessingAvatar || isCreatingGroup}
+                      className="rounded-xl px-2 py-3 text-xs text-slate-400 hover:text-white disabled:opacity-50"
+                      title="Убрать аватар"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">Можно оставить без фотографии и добавить её позже.</p>
               </div>
               {isProcessingAvatar && <p className="mt-2 text-[11px] text-slate-400">Обрабатываем изображение…</p>}
               {avatarUploadError && <p role="alert" className="mt-2 text-[11px] text-red-400">{avatarUploadError}</p>}
-              {selectedGroupAvatar.startsWith('data:image/') && (
-                <button
-                  type="button"
-                  onClick={() => { setSelectedGroupAvatar(presetGroupAvatars[0]); setAvatarUploadError(''); }}
-                  className="mt-2 text-[11px] text-slate-400 hover:text-slate-200 underline"
-                >
-                  Вернуть стандартный аватар
-                </button>
-              )}
             </div>
 
             <div>
