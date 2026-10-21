@@ -21,6 +21,7 @@ import { auth, db } from '../lib/firebase';
 import { addDoc, getDoc, onSnapshot, query, collection, doc, serverTimestamp, setDoc, updateDoc, where, orderBy, increment, deleteDoc, writeBatch } from 'firebase/firestore';
 import { sounds } from '../utils/sound';
 import { notifyPushWorkerForMessage } from '../services/pushNotifications';
+import { isAvatarUploadCandidate, uploadAvatarIfNeeded } from '../services/avatarStorage';
 
 interface ChatContextType {
   currentUser: User;
@@ -149,6 +150,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   });
 
   const [remoteChatIds, setRemoteChatIds] = useState<string[]>([]);
+  const attemptedGroupAvatarMigrationsRef = useRef(new Set<string>());
 
   const [chats, setChats] = useState<Chat[]>(() => {
     const userId = localStorage.getItem('bratva_current_user_id') || '';
@@ -345,6 +347,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
           lastMessage: data.lastMessage && typeof data.lastMessage === 'object' ? data.lastMessage as Chat['lastMessage'] : undefined,
         } satisfies Chat;
       }).filter((chat) => chat.type !== 'direct' || !chat.participants.some((participantId) => participantId !== currentUserId && contactRelations[participantId] === 'blocked'));
+      remoteChats.forEach((chat) => {
+        if (
+          chat.type !== 'group' ||
+          chat.creatorId !== currentUserId ||
+          !isAvatarUploadCandidate(chat.avatar) ||
+          attemptedGroupAvatarMigrationsRef.current.has(chat.id)
+        ) return;
+
+        attemptedGroupAvatarMigrationsRef.current.add(chat.id);
+        void uploadAvatarIfNeeded(chat.avatar)
+          .then(async (storedAvatar) => {
+            if (storedAvatar !== chat.avatar) {
+              await setDoc(doc(db, 'chats', chat.id), { avatar: storedAvatar }, { merge: true });
+            }
+          })
+          .catch((error) => console.warn('Не удалось перенести аватар группы в R2:', chat.id, error));
+      });
       const ids = remoteChats.map((chat) => chat.id);
       setRemoteChatIds(ids);
       setChats((previous) => {
