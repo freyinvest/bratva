@@ -30,6 +30,7 @@ export async function uploadAvatarIfNeeded(avatar: string): Promise<string> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ dataUrl: avatar }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   const payload = await response.json().catch(() => null) as AvatarUploadResponse | null;
