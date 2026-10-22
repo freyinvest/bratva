@@ -189,24 +189,26 @@ export const AuthModal: React.FC = () => {
           badge: 'Свой',
         };
 
-        await withAuthTimeout(
-          setDoc(doc(db, 'users', credential.user.uid), profile),
-          'сохранение профиля',
-        );
-        await withAuthTimeout(
-          setDoc(doc(db, 'publicProfiles', credential.user.uid), {
-            id: credential.user.uid,
-            name: profile.name,
-            nickname: profile.nickname,
-            nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
-            avatar: profile.avatar,
-            bio: profile.bio,
-            status: profile.status,
-            lastSeen: profile.lastSeen,
-            badge: profile.badge,
-          }),
-          'сохранение публичного профиля',
-        );
+        await Promise.all([
+          withAuthTimeout(
+            setDoc(doc(db, 'users', credential.user.uid), profile),
+            'сохранение профиля',
+          ),
+          withAuthTimeout(
+            setDoc(doc(db, 'publicProfiles', credential.user.uid), {
+              id: credential.user.uid,
+              name: profile.name,
+              nickname: profile.nickname,
+              nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
+              avatar: profile.avatar,
+              bio: profile.bio,
+              status: profile.status,
+              lastSeen: profile.lastSeen,
+              badge: profile.badge,
+            }),
+            'сохранение публичного профиля',
+          ),
+        ]);
 
         let verificationSent = true;
         try {
@@ -261,36 +263,46 @@ export const AuthModal: React.FC = () => {
           return;
         }
 
-        let profile: AppUser = { ...(profileSnapshot.data() as AppUser), id: credential.user.uid };
-        if (isAvatarUploadCandidate(profile.avatar)) {
-          try {
-            const migratedAvatar = await uploadAvatarIfNeeded(profile.avatar);
-            if (migratedAvatar !== profile.avatar) {
-              await setDoc(doc(db, 'users', credential.user.uid), { avatar: migratedAvatar }, { merge: true });
-              profile = { ...profile, avatar: migratedAvatar };
-            }
-          } catch (avatarError) {
-            console.warn('Legacy profile avatar migration to R2 was skipped:', avatarError);
-          }
-        }
+        const profileData = profileSnapshot.data() as AppUser;
+        const profile: AppUser = {
+          ...profileData,
+          id: credential.user.uid,
+          avatar: resolveAvatarUrl(profileData.avatar),
+        };
 
-await withAuthTimeout(
-  setDoc(doc(db, 'publicProfiles', credential.user.uid), {
-    id: credential.user.uid,
-    name: profile.name,
-    nickname: profile.nickname,
-    nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
-    avatar: profile.avatar,
-    bio: profile.bio || '',
-    status: profile.status || 'offline',
-    lastSeen: profile.lastSeen || '',
-    badge: profile.badge || 'Свой',
-  }),
-  'обновление публичного профиля',
-);
-
-setAuthenticatedUser(profile);
+        // Enter the app as soon as credentials and the private profile are confirmed.
+        // Optional public-directory refresh and legacy-avatar migration must not hold up login.
+        setAuthenticatedUser(profile);
         setIsAuthModalOpen(false);
+
+        void withAuthTimeout(
+          setDoc(doc(db, 'publicProfiles', credential.user.uid), {
+            id: credential.user.uid,
+            name: profile.name,
+            nickname: profile.nickname,
+            nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
+            avatar: profile.avatar,
+            bio: profile.bio || '',
+            badge: profile.badge || 'Свой',
+          }, { merge: true }),
+          'фоновое обновление публичного профиля',
+        ).catch((syncError) => {
+          console.warn('Публичный профиль будет обновлён позже:', syncError);
+        });
+
+        if (isAvatarUploadCandidate(profileData.avatar)) {
+          void uploadAvatarIfNeeded(profileData.avatar)
+            .then(async (migratedAvatar) => {
+              if (migratedAvatar === profileData.avatar) return;
+              await Promise.all([
+                setDoc(doc(db, 'users', credential.user.uid), { avatar: migratedAvatar }, { merge: true }),
+                setDoc(doc(db, 'publicProfiles', credential.user.uid), { avatar: migratedAvatar }, { merge: true }),
+              ]);
+            })
+            .catch((avatarError) => {
+              console.warn('Перенос старого аватара продолжится при следующем входе или сохранении профиля:', avatarError);
+            });
+        }
       }
     } catch (error: unknown) {
       setErrorMessage(explainAuthError(error));
