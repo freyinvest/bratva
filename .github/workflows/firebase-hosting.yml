@@ -40,3 +40,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BRATVA_MSG }}
           projectId: bratva-msg
           channelId: live
+          firebaseToolsVersion: 15.34.0
