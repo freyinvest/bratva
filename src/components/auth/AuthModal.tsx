@@ -208,15 +208,23 @@ export const AuthModal: React.FC = () => {
           'сохранение публичного профиля',
         );
 
-        await withAuthTimeout(
-          sendEmailVerification(credential.user),
-          'отправка письма подтверждения',
-        );
-        await withAuthTimeout(signOut(auth), 'завершение сеанса');
+        let verificationSent = true;
+        try {
+          await withAuthTimeout(
+            sendEmailVerification(credential.user),
+            'отправка письма подтверждения',
+          );
+        } catch (verificationError) {
+          verificationSent = false;
+          console.warn('The account was created, but Firebase did not confirm the verification email request:', verificationError);
+        }
+        await signOut(auth);
         setAuthMode('login');
-        setSuccessMessage(avatarUploadFailed
-          ? 'Аккаунт создан. Письмо для подтверждения отправлено. Аватар пока остался на прежнем адресе; после входа приложение попробует перенести его в R2.'
-          : 'Аккаунт создан. Мы отправили письмо для подтверждения адреса. Перейди по ссылке в письме, затем войди. Проверь папку «Спам», если письма нет во входящих.');
+        setSuccessMessage(!verificationSent
+          ? 'Аккаунт и профиль созданы. Firebase не подтвердил отправку письма за 20 секунд: оно может прийти с задержкой. Проверь «Спам». Если письма не будет, войди с этим адресом и паролем, чтобы запросить подтверждение повторно.'
+          : avatarUploadFailed
+            ? 'Аккаунт создан. Письмо для подтверждения отправлено. Аватар пока остался на прежнем адресе; после входа приложение попробует перенести его в R2.'
+            : 'Аккаунт создан. Мы отправили письмо для подтверждения адреса. Перейди по ссылке в письме, затем войди. Проверь папку «Спам», если письма нет во входящих.');
       } else {
         const credential = await withAuthTimeout(
           signInWithEmailAndPassword(auth, cleanEmail, password),
@@ -224,12 +232,20 @@ export const AuthModal: React.FC = () => {
         );
 
         if (!credential.user.emailVerified) {
-          await withAuthTimeout(
-          sendEmailVerification(credential.user),
-          'отправка письма подтверждения',
-        );
-          await withAuthTimeout(signOut(auth), 'завершение сеанса');
-          setSuccessMessage('Адрес электронной почты ещё не подтверждён. Мы отправили новое письмо. Подтверди адрес и попробуй войти снова.');
+          let verificationSent = true;
+          try {
+            await withAuthTimeout(
+              sendEmailVerification(credential.user),
+              'повторная отправка письма подтверждения',
+            );
+          } catch (verificationError) {
+            verificationSent = false;
+            console.warn('Firebase did not confirm the verification email resend:', verificationError);
+          }
+          await signOut(auth);
+          setSuccessMessage(verificationSent
+            ? 'Адрес электронной почты ещё не подтверждён. Мы запросили новое письмо. Подтверди адрес и попробуй войти снова.'
+            : 'Адрес ещё не подтверждён. Запрос на повторную отправку письма не получил ответ за 20 секунд; письмо может прийти позже. Проверь «Спам» и попробуй войти снова, если письма не будет.');
           return;
         }
 
