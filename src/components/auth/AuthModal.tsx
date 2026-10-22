@@ -18,6 +18,26 @@ import { recoverAvatarImage, resolveAvatarUrl } from '../../utils/avatarUrl';
 import { isAvatarUploadCandidate, uploadAvatarIfNeeded } from '../../services/avatarStorage';
 import type { User as AppUser } from '../../types';
 
+const AUTH_OPERATION_TIMEOUT_MS = 20_000;
+
+/** Prevent auth forms from spinning forever when Firebase requests never settle. */
+function withAuthTimeout<T>(operation: Promise<T>, step: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(
+        'Firebase не ответил за 20 секунд на шаг «' + step + '». Проверь соединение и попробуй снова. Если это регистрация, аккаунт мог уже создаться — проверь почту перед повторной попыткой.',
+      );
+      Object.assign(error, { code: 'app/operation-timeout' });
+      reject(error);
+    }, AUTH_OPERATION_TIMEOUT_MS);
+  });
+
+  return Promise.race([operation, timeout]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  });
+}
+
 export const AuthModal: React.FC = () => {
   const {
     isAuthModalOpen,
@@ -88,6 +108,8 @@ export const AuthModal: React.FC = () => {
         : '';
 
     switch (code) {
+      case 'app/operation-timeout':
+        return error instanceof Error ? error.message : 'Запрос к Firebase занял слишком много времени. Попробуй ещё раз.';
       case 'auth/email-already-in-use':
         return 'Этот email уже зарегистрирован. Переключись на вкладку «Вход».';
       case 'auth/invalid-email':
@@ -136,13 +158,15 @@ export const AuthModal: React.FC = () => {
           return;
         }
 
-        const credential = await createUserWithEmailAndPassword(
-          auth,
-          cleanEmail,
-          password,
+        const credential = await withAuthTimeout(
+          createUserWithEmailAndPassword(auth, cleanEmail, password),
+          'создание аккаунта',
         );
 
-        await updateProfile(credential.user, { displayName: cleanName });
+        await withAuthTimeout(
+          updateProfile(credential.user, { displayName: cleanName }),
+          'сохранение имени',
+        );
 
         let avatarToSave = selectedAvatar;
         try {
@@ -165,41 +189,53 @@ export const AuthModal: React.FC = () => {
           badge: 'Свой',
         };
 
-        await setDoc(doc(db, 'users', credential.user.uid), profile);
-        await setDoc(doc(db, 'publicProfiles', credential.user.uid), {
-          id: credential.user.uid,
-          name: profile.name,
-          nickname: profile.nickname,
-          nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
-          avatar: profile.avatar,
-          bio: profile.bio,
-          status: profile.status,
-          lastSeen: profile.lastSeen,
-          badge: profile.badge,
-        });
+        await withAuthTimeout(
+          setDoc(doc(db, 'users', credential.user.uid), profile),
+          'сохранение профиля',
+        );
+        await withAuthTimeout(
+          setDoc(doc(db, 'publicProfiles', credential.user.uid), {
+            id: credential.user.uid,
+            name: profile.name,
+            nickname: profile.nickname,
+            nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
+            avatar: profile.avatar,
+            bio: profile.bio,
+            status: profile.status,
+            lastSeen: profile.lastSeen,
+            badge: profile.badge,
+          }),
+          'сохранение публичного профиля',
+        );
 
-        await sendEmailVerification(credential.user);
-        await signOut(auth);
+        await withAuthTimeout(
+          sendEmailVerification(credential.user),
+          'отправка письма подтверждения',
+        );
+        await withAuthTimeout(signOut(auth), 'завершение сеанса');
         setAuthMode('login');
         setSuccessMessage(avatarUploadFailed
           ? 'Аккаунт создан. Письмо для подтверждения отправлено. Аватар пока остался на прежнем адресе; после входа приложение попробует перенести его в R2.'
           : 'Аккаунт создан. Мы отправили письмо для подтверждения адреса. Перейди по ссылке в письме, затем войди. Проверь папку «Спам», если письма нет во входящих.');
       } else {
-        const credential = await signInWithEmailAndPassword(
-          auth,
-          cleanEmail,
-          password,
+        const credential = await withAuthTimeout(
+          signInWithEmailAndPassword(auth, cleanEmail, password),
+          'вход в аккаунт',
         );
 
         if (!credential.user.emailVerified) {
-          await sendEmailVerification(credential.user);
-          await signOut(auth);
+          await withAuthTimeout(
+          sendEmailVerification(credential.user),
+          'отправка письма подтверждения',
+        );
+          await withAuthTimeout(signOut(auth), 'завершение сеанса');
           setSuccessMessage('Адрес электронной почты ещё не подтверждён. Мы отправили новое письмо. Подтверди адрес и попробуй войти снова.');
           return;
         }
 
-        const profileSnapshot = await getDoc(
-          doc(db, 'users', credential.user.uid),
+        const profileSnapshot = await withAuthTimeout(
+          getDoc(doc(db, 'users', credential.user.uid)),
+          'чтение профиля',
         );
 
         if (!profileSnapshot.exists()) {
@@ -222,17 +258,20 @@ export const AuthModal: React.FC = () => {
           }
         }
 
-await setDoc(doc(db, 'publicProfiles', credential.user.uid), {
-  id: credential.user.uid,
-  name: profile.name,
-  nickname: profile.nickname,
-  nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
-  avatar: profile.avatar,
-  bio: profile.bio || '',
-  status: profile.status || 'offline',
-  lastSeen: profile.lastSeen || '',
-  badge: profile.badge || 'Свой',
-});
+await withAuthTimeout(
+  setDoc(doc(db, 'publicProfiles', credential.user.uid), {
+    id: credential.user.uid,
+    name: profile.name,
+    nickname: profile.nickname,
+    nicknameLower: profile.nickname.replace(/^@+/, '').toLowerCase(),
+    avatar: profile.avatar,
+    bio: profile.bio || '',
+    status: profile.status || 'offline',
+    lastSeen: profile.lastSeen || '',
+    badge: profile.badge || 'Свой',
+  }),
+  'обновление публичного профиля',
+);
 
 setAuthenticatedUser(profile);
         setIsAuthModalOpen(false);
